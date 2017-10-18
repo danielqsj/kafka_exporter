@@ -1,7 +1,7 @@
 kafka_exporter
 ==============
 
-[![Docker Pulls](https://img.shields.io/docker/pulls/danielqsj/kafka_exporter.svg)](https://hub.docker.com/r/danielqsj/kafka_exporter)[![Go Report Card](https://goreportcard.com/badge/github.com/danielqsj/kafka_exporter)](https://goreportcard.com/report/github.com/danielqsj/kafka_exporter)
+[![Docker Pulls](https://img.shields.io/docker/pulls/danielqsj/kafka-exporter.svg)](https://hub.docker.com/r/danielqsj/kafka-exporter)[![Go Report Card](https://goreportcard.com/badge/github.com/danielqsj/kafka_exporter)](https://goreportcard.com/report/github.com/danielqsj/kafka_exporter)
 
 Kafka exporter for Prometheus
 
@@ -70,7 +70,7 @@ kafka_exporter --kafka.server=kafka:9092
 ### run docker image
 
 ```
-docker run  -ti --rm danielqsj/kafka_exporter --kafka.server=kafka:9092
+docker run  -ti --rm danielqsj/kafka-exporter --kafka.server=kafka:9092
 ```
 
 Options
