@@ -1,78 +1,91 @@
-# kafka_exporter
+kafka_exporter
+==============
 
-[![Docker Pulls](https://img.shields.io/docker/pulls/danielqsj/kafka_exporter.svg)](https://hub.docker.com/r/danielqsj/kafka_exporter)
-[![Go Report Card](https://goreportcard.com/badge/github.com/danielqsj/kafka_exporter)](https://goreportcard.com/report/github.com/danielqsj/kafka_exporter)
+[![Docker Pulls](https://img.shields.io/docker/pulls/danielqsj/kafka_exporter.svg)](https://hub.docker.com/r/danielqsj/kafka_exporter)[![Go Report Card](https://goreportcard.com/badge/github.com/danielqsj/kafka_exporter)](https://goreportcard.com/report/github.com/danielqsj/kafka_exporter)
 
 Kafka exporter for Prometheus
 
-## Table of Contents
-* [Dependency](#dependency)
-* [Download](#download)
-* [Compile](#compile)
-  * [build binary](#build-binary)
-  * [build docker image](#build-docker-image)
-* [Run](#run)
-  * [run binary](#run-binary)
-  * [run docker image](#run-docker-image)
-* [Options](#options)
-* [Metrics](#metrics)
-  * [Brokers](#brokers)
-  * [Topics](#topics)
-  * [Consumer Groups](#consumer-groups)
+Table of Contents
+-----------------
 
-## Dependency
+-	[Dependency](#dependency)
+-	[Download](#download)
+-	[Compile](#compile)
+	-	[build binary](#build-binary)
+	-	[build docker image](#build-docker-image)
+-	[Run](#run)
+	-	[run binary](#run-binary)
+	-	[run docker image](#run-docker-image)
+-	[Options](#options)
+-	[Metrics](#metrics)
+	-	[Brokers](#brokers)
+	-	[Topics](#topics)
+	-	[Consumer Groups](#consumer-groups)
 
-* [Prometheus](https://prometheus.io/)
-* [Golang](https://golang.org/)
-* [Dep](https://github.com/golang/dep/)
+Dependency
+----------
 
-## Download
+-	[Prometheus](https://prometheus.io/)
+-	[Golang](https://golang.org/)
+-	[Dep](https://github.com/golang/dep/)
+
+Download
+--------
 
 Binary can be downloaded from [Releases](https://github.com/danielqsj/kafka_exporter/releases) page.
 
-## Compile
+Compile
+-------
 
 ### build binary
 
-``` shell
+```shell
 make
 ```
 
 ### build docker image
-``` shell
+
+```shell
 make docker
 ```
 
-## Docker Hub Image
-``` shell
-docker pull sophos/nginx-vts-exporter:latest
-```
-It can be used directly instead of having to build the image yourself.
-([Docker Hub danielqsj/kafka-exporter](https://hub.docker.com/r/danielqsj/kafka-exporter/))
+Docker Hub Image
+----------------
 
-## Run
+```shell
+docker pull danielqsj/kafka-exporter:latest
+```
+
+It can be used directly instead of having to build the image yourself. ([Docker Hub danielqsj/kafka-exporter](https://hub.docker.com/r/danielqsj/kafka-exporter/)\)
+
+Run
+---
 
 ### run binary
-``` shell
+
+```shell
 kafka_exporter --kafka.server=kafka:9092
 ```
 
 ### run docker image
+
 ```
 docker run  -ti --rm danielqsj/kafka_exporter --kafka.server=kafka:9092
 ```
 
-## Options
+Options
+-------
 
 This image is configurable using different options
 
-Option name | Default     | Description
-------------- | ----------- | --------------
-kafka.server |  kafka:9092 | Address (host:port) of Kafka server
-web.listen-address | :9206  | Address to listen on for web interface and telemetry
-web.telemetry-path | /metrics | Path under which to expose metrics
+| Option name        | Default    | Description                                          |
+|--------------------|------------|------------------------------------------------------|
+| kafka.server       | kafka:9092 | Address (host:port) of Kafka server                  |
+| web.listen-address | :9206      | Address to listen on for web interface and telemetry |
+| web.telemetry-path | /metrics   | Path under which to expose metrics                   |
 
-## Metrics
+Metrics
+-------
 
 Documents about exposed Prometheus metrics.
 
@@ -82,13 +95,13 @@ For details on the underlying metrics please see [kafka](https://kafka.apache.or
 
 **Metrics details**
 
-Name                            | Exposed informations     
-------------------------------- | ------------------------
-`kafka_brokers`| Number of Brokers in the Kafka Cluster
+| Name            | Exposed informations                   |
+|-----------------|----------------------------------------|
+| `kafka_brokers` | Number of Brokers in the Kafka Cluster |
 
 **Metrics output example**
 
-``` txt
+```txt
 # HELP kafka_brokers Number of Brokers in the Kafka Cluster.
 # TYPE kafka_brokers gauge
 kafka_brokers 3
@@ -98,20 +111,20 @@ kafka_brokers 3
 
 **Metrics details**
 
-Name                            | Exposed informations     
-------------------------------- | ------------------------
-`kafka_topic_partitions`    | Number of partitions for this Topic
-`kafka_topic_current_offset`       | Current Offset of a Broker at Topic/Partition
-`kafka_topic_oldest_offset`       | Oldest Offset of a Broker at Topic/Partition
-`kafka_topic_partition_in_sync_replica`       | Number of In-Sync Replicas for this Topic/Partition
-`kafka_topic_partition_leader`       | Leader Broker ID of this Topic/Partition
-`kafka_topic_partition_leader_is_preferred`       | 1 if Topic/Partition is using the Preferred Broker
-`kafka_topic_partition_replicas`       | Number of Replicas for this Topic/Partition
-`kafka_topic_under_replicated_partition`       | 1 if Topic/Partition is under Replicated
+| Name                                        | Exposed informations                                |
+|---------------------------------------------|-----------------------------------------------------|
+| `kafka_topic_partitions`                    | Number of partitions for this Topic                 |
+| `kafka_topic_current_offset`                | Current Offset of a Broker at Topic/Partition       |
+| `kafka_topic_oldest_offset`                 | Oldest Offset of a Broker at Topic/Partition        |
+| `kafka_topic_partition_in_sync_replica`     | Number of In-Sync Replicas for this Topic/Partition |
+| `kafka_topic_partition_leader`              | Leader Broker ID of this Topic/Partition            |
+| `kafka_topic_partition_leader_is_preferred` | 1 if Topic/Partition is using the Preferred Broker  |
+| `kafka_topic_partition_replicas`            | Number of Replicas for this Topic/Partition         |
+| `kafka_topic_under_replicated_partition`    | 1 if Topic/Partition is under Replicated            |
 
 **Metrics output example**
 
-``` txt
+```txt
 # HELP kafka_topic_partitions Number of partitions for this Topic
 # TYPE kafka_topic_partitions gauge
 kafka_topic_partitions{topic="__consumer_offsets"} 50
@@ -149,14 +162,14 @@ kafka_topic_under_replicated_partition{partition="0",topic="__consumer_offsets"}
 
 **Metrics details**
 
-Name                            | Exposed informations
-------------------------------- | ------------------------
-`kafka_consumergroup_current_offset` | Current Offset of a ConsumerGroup at Topic/Partition
-`kafka_consumergroup_lag`    | Current Approximate Lag of a ConsumerGroup at Topic/Partition
+| Name                                 | Exposed informations                                          |
+|--------------------------------------|---------------------------------------------------------------|
+| `kafka_consumergroup_current_offset` | Current Offset of a ConsumerGroup at Topic/Partition          |
+| `kafka_consumergroup_lag`            | Current Approximate Lag of a ConsumerGroup at Topic/Partition |
 
 **Metrics output example**
 
-``` txt
+```txt
 # HELP kafka_consumergroup_current_offset Current Offset of a ConsumerGroup at Topic/Partition
 # TYPE kafka_consumergroup_current_offset gauge
 kafka_consumergroup_current_offset{consumergroup="KMOffsetCache-kafka-manager-3806276532-ml44w",partition="0",topic="__consumer_offsets"} -1
