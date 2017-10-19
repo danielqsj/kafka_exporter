@@ -11,3 +11,11 @@ build:
 tarball:
     files:
         - LICENSE
+crossbuild:
+    platforms:
+        - linux/amd64
+        - linux/386
+        - darwin/amd64
+        - darwin/386
+        - windows/amd64
+        - windows/386
