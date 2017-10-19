@@ -32,13 +32,13 @@ var (
 	)
 
 	topicCurrentOffset = prometheus.NewDesc(
-		prometheus.BuildFQName(namespace, "topic", "current_offset"),
+		prometheus.BuildFQName(namespace, "topic", "partition_current_offset"),
 		"Current Offset of a Broker at Topic/Partition",
 		[]string{"topic", "partition"}, nil,
 	)
 
 	topicOldestOffset = prometheus.NewDesc(
-		prometheus.BuildFQName(namespace, "topic", "oldest_offset"),
+		prometheus.BuildFQName(namespace, "topic", "partition_oldest_offset"),
 		"Oldest Offset of a Broker at Topic/Partition",
 		[]string{"topic", "partition"}, nil,
 	)
@@ -68,7 +68,7 @@ var (
 	)
 
 	topicUnderReplicatedPartition = prometheus.NewDesc(
-		prometheus.BuildFQName(namespace, "topic", "under_replicated_partition"),
+		prometheus.BuildFQName(namespace, "topic", "partition_under_replicated_partition"),
 		"1 if Topic/Partition is under Replicated",
 		[]string{"topic", "partition"}, nil,
 	)

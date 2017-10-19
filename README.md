@@ -111,16 +111,16 @@ kafka_brokers 3
 
 **Metrics details**
 
-| Name                                        | Exposed informations                                |
-|---------------------------------------------|-----------------------------------------------------|
-| `kafka_topic_partitions`                    | Number of partitions for this Topic                 |
-| `kafka_topic_current_offset`                | Current Offset of a Broker at Topic/Partition       |
-| `kafka_topic_oldest_offset`                 | Oldest Offset of a Broker at Topic/Partition        |
-| `kafka_topic_partition_in_sync_replica`     | Number of In-Sync Replicas for this Topic/Partition |
-| `kafka_topic_partition_leader`              | Leader Broker ID of this Topic/Partition            |
-| `kafka_topic_partition_leader_is_preferred` | 1 if Topic/Partition is using the Preferred Broker  |
-| `kafka_topic_partition_replicas`            | Number of Replicas for this Topic/Partition         |
-| `kafka_topic_under_replicated_partition`    | 1 if Topic/Partition is under Replicated            |
+| Name                                               | Exposed informations                                |
+|----------------------------------------------------|-----------------------------------------------------|
+| `kafka_topic_partitions`                           | Number of partitions for this Topic                 |
+| `kafka_topic_partition_current_offset`             | Current Offset of a Broker at Topic/Partition       |
+| `kafka_topic_partition_oldest_offset`              | Oldest Offset of a Broker at Topic/Partition        |
+| `kafka_topic_partition_in_sync_replica`            | Number of In-Sync Replicas for this Topic/Partition |
+| `kafka_topic_partition_leader`                     | Leader Broker ID of this Topic/Partition            |
+| `kafka_topic_partition_leader_is_preferred`        | 1 if Topic/Partition is using the Preferred Broker  |
+| `kafka_topic_partition_replicas`                   | Number of Replicas for this Topic/Partition         |
+| `kafka_topic_partition_under_replicated_partition` | 1 if Topic/Partition is under Replicated            |
 
 **Metrics output example**
 
