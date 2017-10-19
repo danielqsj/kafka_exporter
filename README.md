@@ -129,13 +129,13 @@ kafka_brokers 3
 # TYPE kafka_topic_partitions gauge
 kafka_topic_partitions{topic="__consumer_offsets"} 50
 
-# HELP kafka_topic_current_offset Current Offset of a Broker at Topic/Partition
-# TYPE kafka_topic_current_offset gauge
-kafka_topic_current_offset{partition="0",topic="__consumer_offsets"} 0
+# HELP kafka_topic_partition_current_offset Current Offset of a Broker at Topic/Partition
+# TYPE kafka_topic_partition_current_offset gauge
+kafka_topic_partition_current_offset{partition="0",topic="__consumer_offsets"} 0
 
-# HELP kafka_topic_oldest_offset Oldest Offset of a Broker at Topic/Partition
-# TYPE kafka_topic_oldest_offset gauge
-kafka_topic_oldest_offset{partition="0",topic="__consumer_offsets"} 0
+# HELP kafka_topic_partition_oldest_offset Oldest Offset of a Broker at Topic/Partition
+# TYPE kafka_topic_partition_oldest_offset gauge
+kafka_topic_partition_oldest_offset{partition="0",topic="__consumer_offsets"} 0
 
 # HELP kafka_topic_partition_in_sync_replica Number of In-Sync Replicas for this Topic/Partition
 # TYPE kafka_topic_partition_in_sync_replica gauge
@@ -153,9 +153,9 @@ kafka_topic_partition_leader_is_preferred{partition="0",topic="__consumer_offset
 # TYPE kafka_topic_partition_replicas gauge
 kafka_topic_partition_replicas{partition="0",topic="__consumer_offsets"} 3
 
-# HELP kafka_topic_under_replicated_partition 1 if Topic/Partition is under Replicated
-# TYPE kafka_topic_under_replicated_partition gauge
-kafka_topic_under_replicated_partition{partition="0",topic="__consumer_offsets"} 0
+# HELP kafka_topic_partition_under_replicated_partition 1 if Topic/Partition is under Replicated
+# TYPE kafka_topic_partition_under_replicated_partition gauge
+kafka_topic_partition_under_replicated_partition{partition="0",topic="__consumer_offsets"} 0
 ```
 
 ### Consumer Groups
