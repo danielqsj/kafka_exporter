@@ -73,12 +73,12 @@ kafka_exporter --kafka.server=kafka:9092
 docker run  -ti --rm danielqsj/kafka-exporter --kafka.server=kafka:9092
 ```
 
-Options
+Flags
 -------
 
-This image is configurable using different options
+This image is configurable using different flags
 
-| Option name        | Default    | Description                                          |
+| Flag name          | Default    | Description                                          |
 |--------------------|------------|------------------------------------------------------|
 | kafka.server       | kafka:9092 | Address (host:port) of Kafka server                  |
 | web.listen-address | :9206      | Address to listen on for web interface and telemetry |
