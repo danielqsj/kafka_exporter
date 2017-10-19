@@ -224,7 +224,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	if len(e.client.Brokers()) > 0 {
 		for _, broker := range e.client.Brokers() {
 			conf := sarama.NewConfig()
-			conf.Version = sarama.V0_10_1_0 //V0_9_0_0
+			conf.Version = sarama.V0_10_1_0
 			if err := broker.Open(conf); err != nil {
 				if err == sarama.ErrAlreadyConnected {
 					broker.Close()

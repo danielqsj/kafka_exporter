@@ -8,6 +8,7 @@ Kafka exporter for Prometheus
 Table of Contents
 -----------------
 
+-	[Compatibility](#compatibility)
 -	[Dependency](#dependency)
 -	[Download](#download)
 -	[Compile](#compile)
@@ -22,12 +23,16 @@ Table of Contents
 	-	[Topics](#topics)
 	-	[Consumer Groups](#consumer-groups)
 
+Compatibility
+-------------
+Support [Apache Kafka](https://kafka.apache.org) version 0.10.1.0 (and later).
+
 Dependency
 ----------
 
--	[Prometheus](https://prometheus.io/)
--	[Golang](https://golang.org/)
--	[Dep](https://github.com/golang/dep/)
+-	[Prometheus](https://prometheus.io)
+-	[Golang](https://golang.org)
+-	[Dep](https://github.com/golang/dep)
 
 Download
 --------
@@ -56,7 +61,7 @@ Docker Hub Image
 docker pull danielqsj/kafka-exporter:latest
 ```
 
-It can be used directly instead of having to build the image yourself. ([Docker Hub danielqsj/kafka-exporter](https://hub.docker.com/r/danielqsj/kafka-exporter/)\)
+It can be used directly instead of having to build the image yourself. ([Docker Hub danielqsj/kafka-exporter](https://hub.docker.com/r/danielqsj/kafka-exporter)\)
 
 Run
 ---
@@ -74,7 +79,7 @@ docker run  -ti --rm danielqsj/kafka-exporter --kafka.server=kafka:9092
 ```
 
 Flags
--------
+-----
 
 This image is configurable using different flags
 
@@ -89,7 +94,7 @@ Metrics
 
 Documents about exposed Prometheus metrics.
 
-For details on the underlying metrics please see [kafka](https://kafka.apache.org/documentation/)
+For details on the underlying metrics please see [Apache Kafka](https://kafka.apache.org/documentation).
 
 ### Brokers
 
