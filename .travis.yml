@@ -9,7 +9,6 @@ go:
 - 1.8.3
 
 after_success:
-  - make
   - make docker
   - make push
   - if [[ -n "$TRAVIS_TAG" ]]; then make crossbuild release; fi
