@@ -1,9 +1,9 @@
 kafka_exporter
 ==============
 
-[![Build Status](https://travis-ci.org/danielqsj/kafka_exporter.svg?branch=master)](https://travis-ci.org/danielqsj/kafka_exporter)[![Docker Pulls](https://img.shields.io/docker/pulls/danielqsj/kafka-exporter.svg)](https://hub.docker.com/r/danielqsj/kafka-exporter)[![Go Report Card](https://goreportcard.com/badge/github.com/danielqsj/kafka_exporter)](https://goreportcard.com/report/github.com/danielqsj/kafka_exporter)
+[![Build Status](https://travis-ci.org/danielqsj/kafka_exporter.svg?branch=master)](https://travis-ci.org/danielqsj/kafka_exporter)[![Docker Pulls](https://img.shields.io/docker/pulls/danielqsj/kafka-exporter.svg)](https://hub.docker.com/r/danielqsj/kafka-exporter)[![Go Report Card](https://goreportcard.com/badge/github.com/danielqsj/kafka_exporter)](https://goreportcard.com/report/github.com/danielqsj/kafka_exporter)[![Language](https://img.shields.io/badge/language-Go-red.svg)](https://github.com/danielqsj/kafka-exporter)[![GitHub release](https://img.shields.io/badge/release-0.2.0-green.svg)](https://github.com/alibaba/derrick/releases)[![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
 
-Kafka exporter for Prometheus
+Kafka exporter for Prometheus. For other metrics from Kafka, have a look at the [JMX exporter](https://github.com/prometheus/jmx_exporter).
 
 Table of Contents
 -----------------
@@ -25,12 +25,14 @@ Table of Contents
 
 Compatibility
 -------------
+
 Support [Apache Kafka](https://kafka.apache.org) version 0.10.1.0 (and later).
 
 Dependency
 ----------
 
 -	[Prometheus](https://prometheus.io)
+-	[Sarama](https://shopify.github.io/sarama)
 -	[Golang](https://golang.org)
 -	[Dep](https://github.com/golang/dep)
 
@@ -69,13 +71,13 @@ Run
 ### run binary
 
 ```shell
-kafka_exporter --kafka.server=kafka:9092
+kafka_exporter --kafka.server=kafka:9092 [--kafka.server=another-server ...]
 ```
 
 ### run docker image
 
 ```
-docker run  -ti --rm danielqsj/kafka-exporter --kafka.server=kafka:9092
+docker run  -ti --rm danielqsj/kafka-exporter --kafka.server=kafka:9092 [--kafka.server=another-server ...]
 ```
 
 Flags
@@ -85,8 +87,8 @@ This image is configurable using different flags
 
 | Flag name          | Default    | Description                                          |
 |--------------------|------------|------------------------------------------------------|
-| kafka.server       | kafka:9092 | Address (host:port) of Kafka server                  |
-| web.listen-address | :9206      | Address to listen on for web interface and telemetry |
+| kafka.server       | kafka:9092 | Addresses (host:port) of Kafka server                |
+| web.listen-address | :9308      | Address to listen on for web interface and telemetry |
 | web.telemetry-path | /metrics   | Path under which to expose metrics                   |
 
 Metrics
