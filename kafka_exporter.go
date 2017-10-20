@@ -94,13 +94,13 @@ type Exporter struct {
 }
 
 type kafkaOpts struct {
-	uri string
+	uri []string
 }
 
 // NewExporter returns an initialized Exporter.
 func NewExporter(opts kafkaOpts) (*Exporter, error) {
 	config := sarama.NewConfig()
-	client, err := sarama.NewClient([]string{opts.uri}, config)
+	client, err := sarama.NewClient(opts.uri, config)
 
 	if err != nil {
 		fmt.Println("Error Init Kafka Client")
@@ -299,12 +299,12 @@ func init() {
 
 func main() {
 	var (
-		listenAddress = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9206").String()
+		listenAddress = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9308").String()
 		metricsPath   = kingpin.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
 
 		opts = kafkaOpts{}
 	)
-	kingpin.Flag("kafka.server", "Address (host:port) of Kafka server.").Default("kafka:9092").StringVar(&opts.uri)
+	kingpin.Flag("kafka.server", "Address (host:port) of Kafka server.").Default("kafka:9092").StringsVar(&opts.uri)
 
 	log.AddFlags(kingpin.CommandLine)
 	kingpin.Version(version.Print("kafka_exporter"))
