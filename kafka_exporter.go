@@ -94,12 +94,28 @@ type Exporter struct {
 }
 
 type kafkaOpts struct {
-	uri []string
+	uri          []string
+	useSASL      bool
+	userSASL     string
+	userPASSWORD string
 }
 
 // NewExporter returns an initialized Exporter.
 func NewExporter(opts kafkaOpts) (*Exporter, error) {
 	config := sarama.NewConfig()
+
+	if opts.useSASL {
+		config.Net.SASL.Enable = true
+
+		if opts.userSASL != "" {
+			config.Net.SASL.User = opts.userSASL
+		}
+
+		if opts.userPASSWORD != "" {
+			config.Net.SASL.Password = opts.userPASSWORD
+		}
+	}
+
 	client, err := sarama.NewClient(opts.uri, config)
 
 	if err != nil {
@@ -305,6 +321,9 @@ func main() {
 		opts = kafkaOpts{}
 	)
 	kingpin.Flag("kafka.server", "Address (host:port) of Kafka server.").Default("kafka:9092").StringsVar(&opts.uri)
+	kingpin.Flag("sasl.enabled", "Connect using SASL/PLAIN").BoolVar(&opts.useSASL)
+	kingpin.Flag("sasl.username", "SASL user name").Default("").StringVar(&opts.userSASL)
+	kingpin.Flag("sasl.password", "SASL user password").Default("").StringVar(&opts.userPASSWORD)
 
 	log.AddFlags(kingpin.CommandLine)
 	kingpin.Version(version.Print("kafka_exporter"))
