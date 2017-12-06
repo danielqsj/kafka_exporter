@@ -86,7 +86,7 @@ Flags
 This image is configurable using different flags
 
 | Flag name          | Default    | Description                                          |
-|--------------------|------------|------------------------------------------------------|
+| ------------------ | ---------- | ---------------------------------------------------- |
 | kafka.server       | kafka:9092 | Addresses (host:port) of Kafka server                |
 | topic.filter       | .*         | Regex that determines which topics to collect        |
 | web.listen-address | :9308      | Address to listen on for web interface and telemetry |
@@ -104,7 +104,7 @@ For details on the underlying metrics please see [Apache Kafka](https://kafka.ap
 **Metrics details**
 
 | Name            | Exposed informations                   |
-|-----------------|----------------------------------------|
+| --------------- | -------------------------------------- |
 | `kafka_brokers` | Number of Brokers in the Kafka Cluster |
 
 **Metrics output example**
@@ -120,7 +120,7 @@ kafka_brokers 3
 **Metrics details**
 
 | Name                                               | Exposed informations                                |
-|----------------------------------------------------|-----------------------------------------------------|
+| -------------------------------------------------- | --------------------------------------------------- |
 | `kafka_topic_partitions`                           | Number of partitions for this Topic                 |
 | `kafka_topic_partition_current_offset`             | Current Offset of a Broker at Topic/Partition       |
 | `kafka_topic_partition_oldest_offset`              | Oldest Offset of a Broker at Topic/Partition        |
@@ -171,7 +171,7 @@ kafka_topic_partition_under_replicated_partition{partition="0",topic="__consumer
 **Metrics details**
 
 | Name                                 | Exposed informations                                          |
-|--------------------------------------|---------------------------------------------------------------|
+| ------------------------------------ | ------------------------------------------------------------- |
 | `kafka_consumergroup_current_offset` | Current Offset of a ConsumerGroup at Topic/Partition          |
 | `kafka_consumergroup_lag`            | Current Approximate Lag of a ConsumerGroup at Topic/Partition |
 
