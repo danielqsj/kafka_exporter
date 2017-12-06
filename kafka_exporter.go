@@ -321,7 +321,7 @@ func main() {
 		opts = kafkaOpts{}
 	)
 	kingpin.Flag("kafka.server", "Address (host:port) of Kafka server.").Default("kafka:9092").StringsVar(&opts.uri)
-	kingpin.Flag("sasl.enabled", "Connect using SASL/PLAIN").BoolVar(&opts.useSASL)
+	kingpin.Flag("sasl.enabled", "Connect using SASL/PLAIN").Default("false").BoolVar(&opts.useSASL)
 	kingpin.Flag("sasl.username", "SASL user name").Default("").StringVar(&opts.userSASL)
 	kingpin.Flag("sasl.password", "SASL user password").Default("").StringVar(&opts.userPASSWORD)
 
