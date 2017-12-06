@@ -345,6 +345,7 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
+	defer exporter.client.Close()
 	prometheus.MustRegister(exporter)
 
 	http.Handle(*metricsPath, promhttp.Handler())
