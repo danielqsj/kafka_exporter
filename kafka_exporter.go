@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
-
+	"regexp"
 	"strconv"
 
 	"github.com/Shopify/sarama"
@@ -89,8 +89,9 @@ var (
 // Exporter collects Kafka stats from the given server and exports them using
 // the prometheus metrics package.
 type Exporter struct {
-	client sarama.Client
-	offset map[string]map[int32]int64
+	client      sarama.Client
+	topicFilter *regexp.Regexp
+	offset      map[string]map[int32]int64
 }
 
 type kafkaOpts struct {
@@ -101,7 +102,7 @@ type kafkaOpts struct {
 }
 
 // NewExporter returns an initialized Exporter.
-func NewExporter(opts kafkaOpts) (*Exporter, error) {
+func NewExporter(opts kafkaOpts, topicFilter string) (*Exporter, error) {
 	config := sarama.NewConfig()
 
 	if opts.useSASL {
@@ -126,8 +127,9 @@ func NewExporter(opts kafkaOpts) (*Exporter, error) {
 
 	// Init our exporter.
 	return &Exporter{
-		client: client,
-		offset: make(map[string]map[int32]int64),
+		client:      client,
+		topicFilter: regexp.MustCompile(topicFilter),
+		offset:      make(map[string]map[int32]int64),
 	}, nil
 }
 
@@ -159,79 +161,81 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		log.Errorf("Can't get topics: %v", err)
 	} else {
 		for _, topic := range topics {
-			partitions, err := e.client.Partitions(topic)
-			if err != nil {
-				log.Errorf("Can't get partitions of topic %s: %v", topic, err)
-			} else {
-				ch <- prometheus.MustNewConstMetric(
-					topicPartitions, prometheus.GaugeValue, float64(len(partitions)), topic,
-				)
-				e.offset[topic] = make(map[int32]int64, len(partitions))
-				for _, partition := range partitions {
-					broker, err := e.client.Leader(topic, partition)
-					if err != nil {
-						log.Errorf("Can't get leader of topic %s partition %s: %v", topic, partition, err)
-					} else {
-						ch <- prometheus.MustNewConstMetric(
-							topicPartitionLeader, prometheus.GaugeValue, float64(broker.ID()), topic, strconv.FormatInt(int64(partition), 10),
-						)
-					}
+			if e.topicFilter.MatchString(topic) {
+				partitions, err := e.client.Partitions(topic)
+				if err != nil {
+					log.Errorf("Can't get partitions of topic %s: %v", topic, err)
+				} else {
+					ch <- prometheus.MustNewConstMetric(
+						topicPartitions, prometheus.GaugeValue, float64(len(partitions)), topic,
+					)
+					e.offset[topic] = make(map[int32]int64, len(partitions))
+					for _, partition := range partitions {
+						broker, err := e.client.Leader(topic, partition)
+						if err != nil {
+							log.Errorf("Can't get leader of topic %s partition %s: %v", topic, partition, err)
+						} else {
+							ch <- prometheus.MustNewConstMetric(
+								topicPartitionLeader, prometheus.GaugeValue, float64(broker.ID()), topic, strconv.FormatInt(int64(partition), 10),
+							)
+						}
 
-					currentOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
-					if err != nil {
-						log.Errorf("Can't get current offset of topic %s partition %s: %v", topic, partition, err)
-					} else {
-						e.offset[topic][partition] = currentOffset
-						ch <- prometheus.MustNewConstMetric(
-							topicCurrentOffset, prometheus.GaugeValue, float64(currentOffset), topic, strconv.FormatInt(int64(partition), 10),
-						)
-					}
+						currentOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
+						if err != nil {
+							log.Errorf("Can't get current offset of topic %s partition %s: %v", topic, partition, err)
+						} else {
+							e.offset[topic][partition] = currentOffset
+							ch <- prometheus.MustNewConstMetric(
+								topicCurrentOffset, prometheus.GaugeValue, float64(currentOffset), topic, strconv.FormatInt(int64(partition), 10),
+							)
+						}
 
-					oldestOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetOldest)
-					if err != nil {
-						log.Errorf("Can't get oldest offset of topic %s partition %s: %v", topic, partition, err)
-					} else {
-						ch <- prometheus.MustNewConstMetric(
-							topicOldestOffset, prometheus.GaugeValue, float64(oldestOffset), topic, strconv.FormatInt(int64(partition), 10),
-						)
-					}
+						oldestOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetOldest)
+						if err != nil {
+							log.Errorf("Can't get oldest offset of topic %s partition %s: %v", topic, partition, err)
+						} else {
+							ch <- prometheus.MustNewConstMetric(
+								topicOldestOffset, prometheus.GaugeValue, float64(oldestOffset), topic, strconv.FormatInt(int64(partition), 10),
+							)
+						}
 
-					replicas, err := e.client.Replicas(topic, partition)
-					if err != nil {
-						log.Errorf("Can't get replicas of topic %s partition %s: %v", topic, partition, err)
-					} else {
-						ch <- prometheus.MustNewConstMetric(
-							topicPartitionReplicas, prometheus.GaugeValue, float64(len(replicas)), topic, strconv.FormatInt(int64(partition), 10),
-						)
-					}
+						replicas, err := e.client.Replicas(topic, partition)
+						if err != nil {
+							log.Errorf("Can't get replicas of topic %s partition %s: %v", topic, partition, err)
+						} else {
+							ch <- prometheus.MustNewConstMetric(
+								topicPartitionReplicas, prometheus.GaugeValue, float64(len(replicas)), topic, strconv.FormatInt(int64(partition), 10),
+							)
+						}
 
-					inSyncReplicas, err := e.client.InSyncReplicas(topic, partition)
-					if err != nil {
-						log.Errorf("Can't get in-sync replicas of topic %s partition %s: %v", topic, partition, err)
-					} else {
-						ch <- prometheus.MustNewConstMetric(
-							topicPartitionInSyncReplicas, prometheus.GaugeValue, float64(len(inSyncReplicas)), topic, strconv.FormatInt(int64(partition), 10),
-						)
-					}
+						inSyncReplicas, err := e.client.InSyncReplicas(topic, partition)
+						if err != nil {
+							log.Errorf("Can't get in-sync replicas of topic %s partition %s: %v", topic, partition, err)
+						} else {
+							ch <- prometheus.MustNewConstMetric(
+								topicPartitionInSyncReplicas, prometheus.GaugeValue, float64(len(inSyncReplicas)), topic, strconv.FormatInt(int64(partition), 10),
+							)
+						}
 
-					if broker != nil && replicas != nil && broker.ID() == replicas[0] {
-						ch <- prometheus.MustNewConstMetric(
-							topicPartitionUsesPreferredReplica, prometheus.GaugeValue, float64(1), topic, strconv.FormatInt(int64(partition), 10),
-						)
-					} else {
-						ch <- prometheus.MustNewConstMetric(
-							topicPartitionUsesPreferredReplica, prometheus.GaugeValue, float64(0), topic, strconv.FormatInt(int64(partition), 10),
-						)
-					}
+						if broker != nil && replicas != nil && broker.ID() == replicas[0] {
+							ch <- prometheus.MustNewConstMetric(
+								topicPartitionUsesPreferredReplica, prometheus.GaugeValue, float64(1), topic, strconv.FormatInt(int64(partition), 10),
+							)
+						} else {
+							ch <- prometheus.MustNewConstMetric(
+								topicPartitionUsesPreferredReplica, prometheus.GaugeValue, float64(0), topic, strconv.FormatInt(int64(partition), 10),
+							)
+						}
 
-					if replicas != nil && inSyncReplicas != nil && len(inSyncReplicas) < len(replicas) {
-						ch <- prometheus.MustNewConstMetric(
-							topicUnderReplicatedPartition, prometheus.GaugeValue, float64(1), topic, strconv.FormatInt(int64(partition), 10),
-						)
-					} else {
-						ch <- prometheus.MustNewConstMetric(
-							topicUnderReplicatedPartition, prometheus.GaugeValue, float64(0), topic, strconv.FormatInt(int64(partition), 10),
-						)
+						if replicas != nil && inSyncReplicas != nil && len(inSyncReplicas) < len(replicas) {
+							ch <- prometheus.MustNewConstMetric(
+								topicUnderReplicatedPartition, prometheus.GaugeValue, float64(1), topic, strconv.FormatInt(int64(partition), 10),
+							)
+						} else {
+							ch <- prometheus.MustNewConstMetric(
+								topicUnderReplicatedPartition, prometheus.GaugeValue, float64(0), topic, strconv.FormatInt(int64(partition), 10),
+							)
+						}
 					}
 				}
 			}
@@ -317,6 +321,7 @@ func main() {
 	var (
 		listenAddress = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9308").String()
 		metricsPath   = kingpin.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
+		topicFilter   = kingpin.Flag("topic.filter", "Regex that determines which keys to expose.").Default(".*").String()
 
 		opts = kafkaOpts{}
 	)
@@ -333,7 +338,7 @@ func main() {
 	log.Infoln("Starting kafka_exporter", version.Info())
 	log.Infoln("Build context", version.BuildContext())
 
-	exporter, err := NewExporter(opts)
+	exporter, err := NewExporter(opts, *topicFilter)
 	if err != nil {
 		log.Fatalln(err)
 	}
