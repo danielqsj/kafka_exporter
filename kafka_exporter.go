@@ -156,6 +156,9 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		clusterBrokers, prometheus.GaugeValue, float64(len(e.client.Brokers())),
 	)
 
+	if err := e.client.RefreshMetadata(); err != nil {
+		log.Errorf("Can't refresh topics: %v, using cached data", err)
+	}
 	topics, err := e.client.Topics()
 	if err != nil {
 		log.Errorf("Can't get topics: %v", err)
