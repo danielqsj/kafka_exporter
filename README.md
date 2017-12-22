@@ -88,6 +88,9 @@ This image is configurable using different flags
 | Flag name          | Default    | Description                                          |
 | ------------------ | ---------- | ---------------------------------------------------- |
 | kafka.server       | kafka:9092 | Addresses (host:port) of Kafka server                |
+| sasl.enabled       | false      | Connect using SASL/PLAIN                             |
+| sasl.username      |            | SASL user name                                       |
+| sasl.password      |            | SASL user password                                   |
 | topic.filter       | .*         | Regex that determines which topics to collect        |
 | web.listen-address | :9308      | Address to listen on for web interface and telemetry |
 | web.telemetry-path | /metrics   | Path under which to expose metrics                   |
