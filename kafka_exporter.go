@@ -1,7 +1,10 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -99,11 +102,14 @@ type kafkaOpts struct {
 	useSASL      bool
 	userSASL     string
 	userPASSWORD string
+	useTLS       bool
+	rootCAs      string
 }
 
 // NewExporter returns an initialized Exporter.
 func NewExporter(opts kafkaOpts, topicFilter string) (*Exporter, error) {
 	config := sarama.NewConfig()
+	config.ClientID = "kafka-exporter"
 
 	if opts.useSASL {
 		config.Net.SASL.Enable = true
@@ -114,6 +120,22 @@ func NewExporter(opts kafkaOpts, topicFilter string) (*Exporter, error) {
 
 		if opts.userPASSWORD != "" {
 			config.Net.SASL.Password = opts.userPASSWORD
+		}
+	}
+
+	if opts.useTLS {
+		config.Net.TLS.Enable = true
+
+		config.Net.TLS.Config = &tls.Config{
+			RootCAs: x509.NewCertPool(),
+		}
+
+		if opts.rootCAs != "" {
+			if ca, err := ioutil.ReadFile(opts.rootCAs); err == nil {
+				config.Net.TLS.Config.RootCAs.AppendCertsFromPEM(ca)
+			} else {
+				log.Fatalln(err)
+			}
 		}
 	}
 
@@ -332,6 +354,8 @@ func main() {
 	kingpin.Flag("sasl.enabled", "Connect using SASL/PLAIN").Default("false").BoolVar(&opts.useSASL)
 	kingpin.Flag("sasl.username", "SASL user name").Default("").StringVar(&opts.userSASL)
 	kingpin.Flag("sasl.password", "SASL user password").Default("").StringVar(&opts.userPASSWORD)
+	kingpin.Flag("tls.enabled", "Connect using TLS").Default("false").BoolVar(&opts.useTLS)
+	kingpin.Flag("tls.rootca", "The optional certificate authority file for TLS client authentication").Default("").StringVar(&opts.rootCAs)
 
 	log.AddFlags(kingpin.CommandLine)
 	kingpin.Version(version.Print("kafka_exporter"))
