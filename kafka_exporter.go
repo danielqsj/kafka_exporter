@@ -8,13 +8,14 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"sync"
 
 	"github.com/Shopify/sarama"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/version"
-	"gopkg.in/alecthomas/kingpin.v2"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 const (
@@ -95,6 +96,7 @@ type Exporter struct {
 	client      sarama.Client
 	topicFilter *regexp.Regexp
 	offset      map[string]map[int32]int64
+	mu          sync.Mutex
 }
 
 type kafkaOpts struct {
@@ -194,7 +196,9 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 					ch <- prometheus.MustNewConstMetric(
 						topicPartitions, prometheus.GaugeValue, float64(len(partitions)), topic,
 					)
+					e.mu.Lock()
 					e.offset[topic] = make(map[int32]int64, len(partitions))
+					e.mu.Unlock()
 					for _, partition := range partitions {
 						broker, err := e.client.Leader(topic, partition)
 						if err != nil {
@@ -209,7 +213,9 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 						if err != nil {
 							log.Errorf("Can't get current offset of topic %s partition %s: %v", topic, partition, err)
 						} else {
+							e.mu.Lock()
 							e.offset[topic][partition] = currentOffset
+							e.mu.Unlock()
 							ch <- prometheus.MustNewConstMetric(
 								topicCurrentOffset, prometheus.GaugeValue, float64(currentOffset), topic, strconv.FormatInt(int64(partition), 10),
 							)
@@ -324,11 +330,13 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 							ch <- prometheus.MustNewConstMetric(
 								consumergroupCurrentOffset, prometheus.GaugeValue, float64(offsetFetchResponseBlock.Offset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
 							)
+							e.mu.Lock()
 							if offset, ok := e.offset[topic][partition]; ok {
 								ch <- prometheus.MustNewConstMetric(
 									consumergroupLag, prometheus.GaugeValue, float64(offset-offsetFetchResponseBlock.Offset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
 								)
 							}
+							e.mu.Unlock()
 						}
 					}
 				}
