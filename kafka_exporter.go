@@ -112,6 +112,7 @@ type kafkaOpts struct {
 func NewExporter(opts kafkaOpts, topicFilter string) (*Exporter, error) {
 	config := sarama.NewConfig()
 	config.ClientID = "kafka-exporter"
+	config.Version = sarama.V0_10_1_0
 
 	if opts.useSASL {
 		config.Net.SASL.Enable = true
@@ -274,12 +275,10 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	}
 	if len(e.client.Brokers()) > 0 {
 		for _, broker := range e.client.Brokers() {
-			conf := sarama.NewConfig()
-			conf.Version = sarama.V0_10_1_0
-			if err := broker.Open(conf); err != nil {
+			if err := broker.Open(e.client.Config()); err != nil {
 				if err == sarama.ErrAlreadyConnected {
 					broker.Close()
-					if err := broker.Open(conf); err != nil {
+					if err := broker.Open(e.client.Config()); err != nil {
 						log.Errorf("Can't connect to broker %v: %v", broker.ID(), err)
 						break
 					}
