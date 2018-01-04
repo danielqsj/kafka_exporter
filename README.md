@@ -91,6 +91,8 @@ This image is configurable using different flags
 | sasl.enabled       | false      | Connect using SASL/PLAIN                             |
 | sasl.username      |            | SASL user name                                       |
 | sasl.password      |            | SASL user password                                   |
+| tls.enabled        | false      | Connect using TLS                                    |
+| tls.rootca         |            | RootCA to verify server the certificate              |
 | topic.filter       | .*         | Regex that determines which topics to collect        |
 | web.listen-address | :9308      | Address to listen on for web interface and telemetry |
 | web.telemetry-path | /metrics   | Path under which to expose metrics                   |

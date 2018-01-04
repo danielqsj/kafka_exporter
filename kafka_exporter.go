@@ -1,17 +1,21 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"regexp"
 	"strconv"
+	"sync"
 
 	"github.com/Shopify/sarama"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/version"
-	"gopkg.in/alecthomas/kingpin.v2"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 const (
@@ -92,6 +96,7 @@ type Exporter struct {
 	client      sarama.Client
 	topicFilter *regexp.Regexp
 	offset      map[string]map[int32]int64
+	mu          sync.Mutex
 }
 
 type kafkaOpts struct {
@@ -99,11 +104,15 @@ type kafkaOpts struct {
 	useSASL      bool
 	userSASL     string
 	userPASSWORD string
+	useTLS       bool
+	rootCAs      string
 }
 
 // NewExporter returns an initialized Exporter.
 func NewExporter(opts kafkaOpts, topicFilter string) (*Exporter, error) {
 	config := sarama.NewConfig()
+	config.ClientID = "kafka-exporter"
+	config.Version = sarama.V0_10_1_0
 
 	if opts.useSASL {
 		config.Net.SASL.Enable = true
@@ -114,6 +123,22 @@ func NewExporter(opts kafkaOpts, topicFilter string) (*Exporter, error) {
 
 		if opts.userPASSWORD != "" {
 			config.Net.SASL.Password = opts.userPASSWORD
+		}
+	}
+
+	if opts.useTLS {
+		config.Net.TLS.Enable = true
+
+		config.Net.TLS.Config = &tls.Config{
+			RootCAs: x509.NewCertPool(),
+		}
+
+		if opts.rootCAs != "" {
+			if ca, err := ioutil.ReadFile(opts.rootCAs); err == nil {
+				config.Net.TLS.Config.RootCAs.AppendCertsFromPEM(ca)
+			} else {
+				log.Fatalln(err)
+			}
 		}
 	}
 
@@ -172,7 +197,9 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 					ch <- prometheus.MustNewConstMetric(
 						topicPartitions, prometheus.GaugeValue, float64(len(partitions)), topic,
 					)
+					e.mu.Lock()
 					e.offset[topic] = make(map[int32]int64, len(partitions))
+					e.mu.Unlock()
 					for _, partition := range partitions {
 						broker, err := e.client.Leader(topic, partition)
 						if err != nil {
@@ -187,7 +214,9 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 						if err != nil {
 							log.Errorf("Can't get current offset of topic %s partition %s: %v", topic, partition, err)
 						} else {
+							e.mu.Lock()
 							e.offset[topic][partition] = currentOffset
+							e.mu.Unlock()
 							ch <- prometheus.MustNewConstMetric(
 								topicCurrentOffset, prometheus.GaugeValue, float64(currentOffset), topic, strconv.FormatInt(int64(partition), 10),
 							)
@@ -246,12 +275,10 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	}
 	if len(e.client.Brokers()) > 0 {
 		for _, broker := range e.client.Brokers() {
-			conf := sarama.NewConfig()
-			conf.Version = sarama.V0_10_1_0
-			if err := broker.Open(conf); err != nil {
+			if err := broker.Open(e.client.Config()); err != nil {
 				if err == sarama.ErrAlreadyConnected {
 					broker.Close()
-					if err := broker.Open(conf); err != nil {
+					if err := broker.Open(e.client.Config()); err != nil {
 						log.Errorf("Can't connect to broker %v: %v", broker.ID(), err)
 						break
 					}
@@ -302,11 +329,13 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 							ch <- prometheus.MustNewConstMetric(
 								consumergroupCurrentOffset, prometheus.GaugeValue, float64(offsetFetchResponseBlock.Offset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
 							)
+							e.mu.Lock()
 							if offset, ok := e.offset[topic][partition]; ok {
 								ch <- prometheus.MustNewConstMetric(
 									consumergroupLag, prometheus.GaugeValue, float64(offset-offsetFetchResponseBlock.Offset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
 								)
 							}
+							e.mu.Unlock()
 						}
 					}
 				}
@@ -332,6 +361,8 @@ func main() {
 	kingpin.Flag("sasl.enabled", "Connect using SASL/PLAIN").Default("false").BoolVar(&opts.useSASL)
 	kingpin.Flag("sasl.username", "SASL user name").Default("").StringVar(&opts.userSASL)
 	kingpin.Flag("sasl.password", "SASL user password").Default("").StringVar(&opts.userPASSWORD)
+	kingpin.Flag("tls.enabled", "Connect using TLS").Default("false").BoolVar(&opts.useTLS)
+	kingpin.Flag("tls.rootca", "The optional certificate authority file for TLS client authentication").Default("").StringVar(&opts.rootCAs)
 
 	log.AddFlags(kingpin.CommandLine)
 	kingpin.Version(version.Print("kafka_exporter"))
