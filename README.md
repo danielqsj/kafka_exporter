@@ -89,6 +89,7 @@ This image is configurable using different flags
 | ------------------ | ---------- | --------------------------------------------------------------------------------------------------- |
 | kafka.server       | kafka:9092 | Addresses (host:port) of Kafka server                                                               |
 | sasl.enabled       | false      | Connect using SASL/PLAIN                                                                            |
+| sasl.handshake     | true       | Only set this to false if using a non-Kafka SASL proxy                                              |
 | sasl.username      |            | SASL user name                                                                                      |
 | sasl.password      |            | SASL user password                                                                                  |
 | tls.enabled        | false      | Connect using TLS                                                                                   |
@@ -97,7 +98,7 @@ This image is configurable using different flags
 | web.listen-address | :9308      | Address to listen on for web interface and telemetry                                                |
 | web.telemetry-path | /metrics   | Path under which to expose metrics                                                                  |
 | log.level          | info       | Only log messages with the given severity or above. Valid levels: [debug, info, warn, error, fatal] |
-| log.enableSarama   | false      | Turn on Sarama logging                                                                              |
+| log.enable-sarama  | false      | Turn on Sarama logging                                                                              |
 
 Metrics
 -------
