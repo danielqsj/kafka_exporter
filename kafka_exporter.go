@@ -106,8 +106,8 @@ type kafkaOpts struct {
 	uri                      []string
 	useSASL                  bool
 	useSASLHandshake         bool
-	userSASL                 string
-	userPASSWORD             string
+	saslUsername             string
+	saslPassword             string
 	useTLS                   bool
 	tlsCAFile                string
 	tlsCertFile              string
@@ -159,12 +159,12 @@ func NewExporter(opts kafkaOpts, topicFilter string) (*Exporter, error) {
 		config.Net.SASL.Enable = true
 		config.Net.SASL.Handshake = opts.useSASLHandshake
 
-		if opts.userSASL != "" {
-			config.Net.SASL.User = opts.userSASL
+		if opts.saslUsername != "" {
+			config.Net.SASL.User = opts.saslUsername
 		}
 
-		if opts.userPASSWORD != "" {
-			config.Net.SASL.Password = opts.userPASSWORD
+		if opts.saslPassword != "" {
+			config.Net.SASL.Password = opts.saslPassword
 		}
 	}
 
@@ -417,8 +417,8 @@ func main() {
 	kingpin.Flag("kafka.server", "Address (host:port) of Kafka server.").Default("kafka:9092").StringsVar(&opts.uri)
 	kingpin.Flag("sasl.enabled", "Connect using SASL/PLAIN.").Default("false").BoolVar(&opts.useSASL)
 	kingpin.Flag("sasl.handshake", "Only set this to false if using a non-Kafka SASL proxy.").Default("true").BoolVar(&opts.useSASL)
-	kingpin.Flag("sasl.username", "SASL user name.").Default("").StringVar(&opts.userSASL)
-	kingpin.Flag("sasl.password", "SASL user password.").Default("").StringVar(&opts.userPASSWORD)
+	kingpin.Flag("sasl.username", "SASL user name.").Default("").StringVar(&opts.saslUsername)
+	kingpin.Flag("sasl.password", "SASL user password.").Default("").StringVar(&opts.saslPassword)
 	kingpin.Flag("tls.enabled", "Connect using TLS.").Default("false").BoolVar(&opts.useTLS)
 	kingpin.Flag("tls.ca-file", "The optional certificate authority file for TLS client authentication.").Default("").StringVar(&opts.tlsCAFile)
 	kingpin.Flag("tls.cert-file", "The optional certificate file for client authentication.").Default("").StringVar(&opts.tlsCertFile)
