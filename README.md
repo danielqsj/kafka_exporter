@@ -78,7 +78,7 @@ kafka_exporter --kafka.server=kafka:9092 [--kafka.server=another-server ...]
 ### Run Docker Image
 
 ```
-docker run  -ti --rm danielqsj/kafka-exporter --kafka.server=kafka:9092 [--kafka.server=another-server ...]
+docker run -ti --rm -p 9308:9308 danielqsj/kafka-exporter --kafka.server=kafka:9092 [--kafka.server=another-server ...]
 ```
 
 Flags
