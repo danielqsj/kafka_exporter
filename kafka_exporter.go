@@ -22,6 +22,7 @@ import (
 
 const (
 	namespace = "kafka"
+	clientID  = "kafka_exporter"
 )
 
 var (
@@ -113,7 +114,7 @@ type kafkaOpts struct {
 // NewExporter returns an initialized Exporter.
 func NewExporter(opts kafkaOpts, topicFilter string) (*Exporter, error) {
 	config := sarama.NewConfig()
-	config.ClientID = "kafka-exporter"
+	config.ClientID = clientID
 	config.Version = sarama.V0_10_1_0
 
 	if opts.useSASL {
