@@ -103,12 +103,13 @@ type Exporter struct {
 }
 
 type kafkaOpts struct {
-	uri          []string
-	useSASL      bool
-	userSASL     string
-	userPASSWORD string
-	useTLS       bool
-	rootCAs      string
+	uri              []string
+	useSASL          bool
+	useSASLHandshake bool
+	userSASL         string
+	userPASSWORD     string
+	useTLS           bool
+	rootCAs          string
 }
 
 // NewExporter returns an initialized Exporter.
@@ -119,6 +120,7 @@ func NewExporter(opts kafkaOpts, topicFilter string) (*Exporter, error) {
 
 	if opts.useSASL {
 		config.Net.SASL.Enable = true
+		config.Net.SASL.Handshake = opts.useSASLHandshake
 
 		if opts.userSASL != "" {
 			config.Net.SASL.User = opts.userSASL
@@ -363,6 +365,7 @@ func main() {
 	)
 	kingpin.Flag("kafka.server", "Address (host:port) of Kafka server.").Default("kafka:9092").StringsVar(&opts.uri)
 	kingpin.Flag("sasl.enabled", "Connect using SASL/PLAIN").Default("false").BoolVar(&opts.useSASL)
+	kingpin.Flag("sasl.handshake", "Only set this to false if using a non-Kafka SASL proxy").Default("true").BoolVar(&opts.useSASL)
 	kingpin.Flag("sasl.username", "SASL user name").Default("").StringVar(&opts.userSASL)
 	kingpin.Flag("sasl.password", "SASL user password").Default("").StringVar(&opts.userPASSWORD)
 	kingpin.Flag("tls.enabled", "Connect using TLS").Default("false").BoolVar(&opts.useTLS)
