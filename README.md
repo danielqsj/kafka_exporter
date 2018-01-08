@@ -85,20 +85,23 @@ Flags
 
 This image is configurable using different flags
 
-| Flag name          | Default    | Description                                                                                         |
-| ------------------ | ---------- | --------------------------------------------------------------------------------------------------- |
-| kafka.server       | kafka:9092 | Addresses (host:port) of Kafka server                                                               |
-| sasl.enabled       | false      | Connect using SASL/PLAIN                                                                            |
-| sasl.handshake     | true       | Only set this to false if using a non-Kafka SASL proxy                                              |
-| sasl.username      |            | SASL user name                                                                                      |
-| sasl.password      |            | SASL user password                                                                                  |
-| tls.enabled        | false      | Connect using TLS                                                                                   |
-| tls.rootca         |            | RootCA to verify server the certificate                                                             |
-| topic.filter       | .*         | Regex that determines which topics to collect                                                       |
-| web.listen-address | :9308      | Address to listen on for web interface and telemetry                                                |
-| web.telemetry-path | /metrics   | Path under which to expose metrics                                                                  |
-| log.level          | info       | Only log messages with the given severity or above. Valid levels: [debug, info, warn, error, fatal] |
-| log.enable-sarama  | false      | Turn on Sarama logging                                                                              |
+| Flag name                    | Default    | Description                                                                                         |
+| ---------------------------- | ---------- | --------------------------------------------------------------------------------------------------- |
+| kafka.server                 | kafka:9092 | Addresses (host:port) of Kafka server                                                               |
+| sasl.enabled                 | false      | Connect using SASL/PLAIN                                                                            |
+| sasl.handshake               | true       | Only set this to false if using a non-Kafka SASL proxy                                              |
+| sasl.username                |            | SASL user name                                                                                      |
+| sasl.password                |            | SASL user password                                                                                  |
+| tls.enabled                  | false      | Connect using TLS                                                                                   |
+| tls.ca-file                  |            | The optional certificate authority file for TLS client authentication                               |
+| tls.cert-file                |            | The optional certificate file for client authentication                                             |
+| tls.key-file                 |            | The optional key file for client authentication                                                     |
+| tls.insecure-skip-tls-verify | false      | If true, the server's certificate will not be checked for validity                                  |
+| topic.filter                 | .*         | Regex that determines which topics to collect                                                       |
+| web.listen-address           | :9308      | Address to listen on for web interface and telemetry                                                |
+| web.telemetry-path           | /metrics   | Path under which to expose metrics                                                                  |
+| log.level                    | info       | Only log messages with the given severity or above. Valid levels: [debug, info, warn, error, fatal] |
+| log.enable-sarama            | false      | Turn on Sarama logging                                                                              |
 
 Metrics
 -------

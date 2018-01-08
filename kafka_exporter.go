@@ -103,13 +103,50 @@ type Exporter struct {
 }
 
 type kafkaOpts struct {
-	uri              []string
-	useSASL          bool
-	useSASLHandshake bool
-	userSASL         string
-	userPASSWORD     string
-	useTLS           bool
-	rootCAs          string
+	uri                      []string
+	useSASL                  bool
+	useSASLHandshake         bool
+	userSASL                 string
+	userPASSWORD             string
+	useTLS                   bool
+	tlsCAFile                string
+	tlsCertFile              string
+	tlsKeyFile               string
+	tlsInsecureSkipTLSVerify bool
+}
+
+// CanReadCertAndKey returns true if the certificate and key files already exists,
+// otherwise returns false. If lost one of cert and key, returns error.
+func CanReadCertAndKey(certPath, keyPath string) (bool, error) {
+	certReadable := canReadFile(certPath)
+	keyReadable := canReadFile(keyPath)
+
+	if certReadable == false && keyReadable == false {
+		return false, nil
+	}
+
+	if certReadable == false {
+		return false, fmt.Errorf("error reading %s, certificate and key must be supplied as a pair", certPath)
+	}
+
+	if keyReadable == false {
+		return false, fmt.Errorf("error reading %s, certificate and key must be supplied as a pair", keyPath)
+	}
+
+	return true, nil
+}
+
+// If the file represented by path exists and
+// readable, returns true otherwise returns false.
+func canReadFile(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+
+	defer f.Close()
+
+	return true
 }
 
 // NewExporter returns an initialized Exporter.
@@ -135,12 +172,26 @@ func NewExporter(opts kafkaOpts, topicFilter string) (*Exporter, error) {
 		config.Net.TLS.Enable = true
 
 		config.Net.TLS.Config = &tls.Config{
-			RootCAs: x509.NewCertPool(),
+			RootCAs:            x509.NewCertPool(),
+			InsecureSkipVerify: opts.tlsInsecureSkipTLSVerify,
 		}
 
-		if opts.rootCAs != "" {
-			if ca, err := ioutil.ReadFile(opts.rootCAs); err == nil {
+		if opts.tlsCAFile != "" {
+			if ca, err := ioutil.ReadFile(opts.tlsCAFile); err == nil {
 				config.Net.TLS.Config.RootCAs.AppendCertsFromPEM(ca)
+			} else {
+				plog.Fatalln(err)
+			}
+		}
+
+		canReadCertAndKey, err := CanReadCertAndKey(opts.tlsCertFile, opts.tlsKeyFile)
+		if err != nil {
+			plog.Fatalln(err)
+		}
+		if canReadCertAndKey {
+			cert, err := tls.LoadX509KeyPair(opts.tlsCertFile, opts.tlsKeyFile)
+			if err == nil {
+				config.Net.TLS.Config.Certificates = []tls.Certificate{cert}
 			} else {
 				plog.Fatalln(err)
 			}
@@ -369,7 +420,10 @@ func main() {
 	kingpin.Flag("sasl.username", "SASL user name").Default("").StringVar(&opts.userSASL)
 	kingpin.Flag("sasl.password", "SASL user password").Default("").StringVar(&opts.userPASSWORD)
 	kingpin.Flag("tls.enabled", "Connect using TLS").Default("false").BoolVar(&opts.useTLS)
-	kingpin.Flag("tls.rootca", "The optional certificate authority file for TLS client authentication").Default("").StringVar(&opts.rootCAs)
+	kingpin.Flag("tls.ca-file", "The optional certificate authority file for TLS client authentication.").Default("").StringVar(&opts.tlsCAFile)
+	kingpin.Flag("tls.cert-file", "The optional certificate file for client authentication.").Default("").StringVar(&opts.tlsCertFile)
+	kingpin.Flag("tls.key-file", "The optional key file for client authentication.").Default("").StringVar(&opts.tlsKeyFile)
+	kingpin.Flag("tls.insecure-skip-tls-verify", "If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure.").Default("false").BoolVar(&opts.tlsInsecureSkipTLSVerify)
 
 	plog.AddFlags(kingpin.CommandLine)
 	kingpin.Version(version.Print("kafka_exporter"))
