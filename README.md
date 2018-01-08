@@ -103,6 +103,15 @@ This image is configurable using different flags
 | log.level                    | info       | Only log messages with the given severity or above. Valid levels: [debug, info, warn, error, fatal] |
 | log.enable-sarama            | false      | Turn on Sarama logging                                                                              |
 
+### Notes
+
+Boolean values are uniquely managed by [Kingpin](https://github.com/alecthomas/kingpin/blob/master/README.md#boolean-values). Each boolean flag will have a negative complement:
+`--<name>` and `--no-<name>`.
+
+For example:
+
+If you need to disable `sasl.handshake`, you cound add flag `--no-sasl.handshake`
+
 Metrics
 -------
 
