@@ -12,11 +12,11 @@ Table of Contents
 -	[Dependency](#dependency)
 -	[Download](#download)
 -	[Compile](#compile)
-	-	[build binary](#build-binary)
-	-	[build docker image](#build-docker-image)
+	-	[Build Binary](#build-binary)
+	-	[Build Docker Image](#build-docker-image)
 -	[Run](#run)
-	-	[run binary](#run-binary)
-	-	[run docker image](#run-docker-image)
+	-	[Run Binary](#run-binary)
+	-	[Run Docker Image](#run-docker-image)
 -	[Flags](#flags)
     -	[Notes](#notes)
 -	[Metrics](#metrics)
@@ -45,13 +45,13 @@ Binary can be downloaded from [Releases](https://github.com/danielqsj/kafka_expo
 Compile
 -------
 
-### build binary
+### Build Binary
 
 ```shell
 make
 ```
 
-### build docker image
+### Build Docker Image
 
 ```shell
 make docker
@@ -69,13 +69,13 @@ It can be used directly instead of having to build the image yourself. ([Docker 
 Run
 ---
 
-### run binary
+### Run Binary
 
 ```shell
 kafka_exporter --kafka.server=kafka:9092 [--kafka.server=another-server ...]
 ```
 
-### run docker image
+### Run Docker Image
 
 ```
 docker run  -ti --rm danielqsj/kafka-exporter --kafka.server=kafka:9092 [--kafka.server=another-server ...]
