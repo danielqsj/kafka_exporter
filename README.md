@@ -111,7 +111,7 @@ Boolean values are uniquely managed by [Kingpin](https://github.com/alecthomas/k
 
 For example:
 
-If you need to disable `sasl.handshake`, you cound add flag `--no-sasl.handshake`
+If you need to disable `sasl.handshake`, you could add flag `--no-sasl.handshake`
 
 Metrics
 -------
