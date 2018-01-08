@@ -5,7 +5,9 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"sync"
@@ -13,7 +15,7 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/prometheus/common/log"
+	plog "github.com/prometheus/common/log"
 	"github.com/prometheus/common/version"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
@@ -137,7 +139,7 @@ func NewExporter(opts kafkaOpts, topicFilter string) (*Exporter, error) {
 			if ca, err := ioutil.ReadFile(opts.rootCAs); err == nil {
 				config.Net.TLS.Config.RootCAs.AppendCertsFromPEM(ca)
 			} else {
-				log.Fatalln(err)
+				plog.Fatalln(err)
 			}
 		}
 	}
@@ -182,17 +184,17 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	)
 
 	if err := e.client.RefreshMetadata(); err != nil {
-		log.Errorf("Can't refresh topics: %v, using cached data", err)
+		plog.Errorf("Can't refresh topics: %v, using cached data", err)
 	}
 	topics, err := e.client.Topics()
 	if err != nil {
-		log.Errorf("Can't get topics: %v", err)
+		plog.Errorf("Can't get topics: %v", err)
 	} else {
 		for _, topic := range topics {
 			if e.topicFilter.MatchString(topic) {
 				partitions, err := e.client.Partitions(topic)
 				if err != nil {
-					log.Errorf("Can't get partitions of topic %s: %v", topic, err)
+					plog.Errorf("Can't get partitions of topic %s: %v", topic, err)
 				} else {
 					ch <- prometheus.MustNewConstMetric(
 						topicPartitions, prometheus.GaugeValue, float64(len(partitions)), topic,
@@ -203,7 +205,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 					for _, partition := range partitions {
 						broker, err := e.client.Leader(topic, partition)
 						if err != nil {
-							log.Errorf("Can't get leader of topic %s partition %s: %v", topic, partition, err)
+							plog.Errorf("Can't get leader of topic %s partition %s: %v", topic, partition, err)
 						} else {
 							ch <- prometheus.MustNewConstMetric(
 								topicPartitionLeader, prometheus.GaugeValue, float64(broker.ID()), topic, strconv.FormatInt(int64(partition), 10),
@@ -212,7 +214,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 						currentOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
 						if err != nil {
-							log.Errorf("Can't get current offset of topic %s partition %s: %v", topic, partition, err)
+							plog.Errorf("Can't get current offset of topic %s partition %s: %v", topic, partition, err)
 						} else {
 							e.mu.Lock()
 							e.offset[topic][partition] = currentOffset
@@ -224,7 +226,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 						oldestOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetOldest)
 						if err != nil {
-							log.Errorf("Can't get oldest offset of topic %s partition %s: %v", topic, partition, err)
+							plog.Errorf("Can't get oldest offset of topic %s partition %s: %v", topic, partition, err)
 						} else {
 							ch <- prometheus.MustNewConstMetric(
 								topicOldestOffset, prometheus.GaugeValue, float64(oldestOffset), topic, strconv.FormatInt(int64(partition), 10),
@@ -233,7 +235,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 						replicas, err := e.client.Replicas(topic, partition)
 						if err != nil {
-							log.Errorf("Can't get replicas of topic %s partition %s: %v", topic, partition, err)
+							plog.Errorf("Can't get replicas of topic %s partition %s: %v", topic, partition, err)
 						} else {
 							ch <- prometheus.MustNewConstMetric(
 								topicPartitionReplicas, prometheus.GaugeValue, float64(len(replicas)), topic, strconv.FormatInt(int64(partition), 10),
@@ -242,7 +244,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 						inSyncReplicas, err := e.client.InSyncReplicas(topic, partition)
 						if err != nil {
-							log.Errorf("Can't get in-sync replicas of topic %s partition %s: %v", topic, partition, err)
+							plog.Errorf("Can't get in-sync replicas of topic %s partition %s: %v", topic, partition, err)
 						} else {
 							ch <- prometheus.MustNewConstMetric(
 								topicPartitionInSyncReplicas, prometheus.GaugeValue, float64(len(inSyncReplicas)), topic, strconv.FormatInt(int64(partition), 10),
@@ -279,18 +281,18 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 				if err == sarama.ErrAlreadyConnected {
 					broker.Close()
 					if err := broker.Open(e.client.Config()); err != nil {
-						log.Errorf("Can't connect to broker %v: %v", broker.ID(), err)
+						plog.Errorf("Can't connect to broker %v: %v", broker.ID(), err)
 						break
 					}
 				} else {
-					log.Errorf("Can't connect to broker %v: %v", broker.ID(), err)
+					plog.Errorf("Can't connect to broker %v: %v", broker.ID(), err)
 					break
 				}
 			}
 
 			groups, err := broker.ListGroups(&sarama.ListGroupsRequest{})
 			if err != nil {
-				log.Errorf("Can't get consumer group: %v", err)
+				plog.Errorf("Can't get consumer group: %v", err)
 				broker.Close()
 				break
 			}
@@ -302,7 +304,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 			describeGroups, err := broker.DescribeGroups(&sarama.DescribeGroupsRequest{Groups: groupIds})
 			if err != nil {
-				log.Errorf("Can't get describe groups: %v", err)
+				plog.Errorf("Can't get describe groups: %v", err)
 				broker.Close()
 				break
 			}
@@ -312,7 +314,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 				for _, member := range group.Members {
 					assignment, err := member.GetMemberAssignment()
 					if err != nil {
-						log.Errorf("Can't get member assignment of group: %s: %v", group.GroupId, err)
+						plog.Errorf("Can't get member assignment of group: %s: %v", group.GroupId, err)
 					} else {
 						for topic, partitions := range assignment.Topics {
 							for _, partition := range partitions {
@@ -322,7 +324,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 					}
 				}
 				if offsetFetchResponse, err := broker.FetchOffset(&offsetFetchRequest); err != nil {
-					log.Errorf("Cant't get offset of group %s: %v", group.GroupId, err)
+					plog.Errorf("Cant't get offset of group %s: %v", group.GroupId, err)
 				} else {
 					for topic, partitions := range offsetFetchResponse.Blocks {
 						for partition, offsetFetchResponseBlock := range partitions {
@@ -354,6 +356,7 @@ func main() {
 		listenAddress = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9308").String()
 		metricsPath   = kingpin.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
 		topicFilter   = kingpin.Flag("topic.filter", "Regex that determines which topics to collect.").Default(".*").String()
+		logSarama     = kingpin.Flag("log.enableSarama", "Turn on Sarama logging").Default("false").Bool()
 
 		opts = kafkaOpts{}
 	)
@@ -364,17 +367,21 @@ func main() {
 	kingpin.Flag("tls.enabled", "Connect using TLS").Default("false").BoolVar(&opts.useTLS)
 	kingpin.Flag("tls.rootca", "The optional certificate authority file for TLS client authentication").Default("").StringVar(&opts.rootCAs)
 
-	log.AddFlags(kingpin.CommandLine)
+	plog.AddFlags(kingpin.CommandLine)
 	kingpin.Version(version.Print("kafka_exporter"))
 	kingpin.HelpFlag.Short('h')
 	kingpin.Parse()
 
-	log.Infoln("Starting kafka_exporter", version.Info())
-	log.Infoln("Build context", version.BuildContext())
+	plog.Infoln("Starting kafka_exporter", version.Info())
+	plog.Infoln("Build context", version.BuildContext())
+
+	if *logSarama {
+		sarama.Logger = log.New(os.Stdout, "[sarama] ", log.LstdFlags)
+	}
 
 	exporter, err := NewExporter(opts, *topicFilter)
 	if err != nil {
-		log.Fatalln(err)
+		plog.Fatalln(err)
 	}
 	defer exporter.client.Close()
 	prometheus.MustRegister(exporter)
@@ -390,6 +397,6 @@ func main() {
 	        </html>`))
 	})
 
-	log.Infoln("Listening on", *listenAddress)
-	log.Fatal(http.ListenAndServe(*listenAddress, nil))
+	plog.Infoln("Listening on", *listenAddress)
+	plog.Fatal(http.ListenAndServe(*listenAddress, nil))
 }
