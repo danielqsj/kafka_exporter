@@ -153,7 +153,7 @@ func canReadFile(path string) bool {
 func NewExporter(opts kafkaOpts, topicFilter string) (*Exporter, error) {
 	config := sarama.NewConfig()
 	config.ClientID = clientID
-	config.Version = sarama.V0_10_1_0
+	config.Version = sarama.V0_8_2_2
 
 	if opts.useSASL {
 		config.Net.SASL.Enable = true
