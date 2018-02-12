@@ -305,7 +305,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 							)
 						}
 
-						if broker != nil && replicas != nil && broker.ID() == replicas[0] {
+						if broker != nil && replicas != nil && len(replicas) > 0 && broker.ID() == replicas[0] {
 							ch <- prometheus.MustNewConstMetric(
 								topicPartitionUsesPreferredReplica, prometheus.GaugeValue, float64(1), topic, strconv.FormatInt(int64(partition), 10),
 							)
