@@ -386,8 +386,16 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 							)
 							e.mu.Lock()
 							if offset, ok := e.offset[topic][partition]; ok {
+								// Kafka will return -1 if there is no offset associated with a topic-partition under that consumer group
+								// forcing lag to -1 to be able to alert on that
+								var lag int64
+								if offsetFetchResponseBlock.Offset == -1 {
+									lag = -1
+								} else {
+									lag = offset - offsetFetchResponseBlock.Offset
+								}
 								ch <- prometheus.MustNewConstMetric(
-									consumergroupLag, prometheus.GaugeValue, float64(offset-offsetFetchResponseBlock.Offset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
+									consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
 								)
 							}
 							e.mu.Unlock()
