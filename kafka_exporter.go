@@ -259,7 +259,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 					for _, partition := range partitions {
 						broker, err := e.client.Leader(topic, partition)
 						if err != nil {
-							plog.Errorf("Can't get leader of topic %s partition %s: %v", topic, partition, err)
+							plog.Errorf("Can't get leader of topic %s partition %d: %v", topic, partition, err)
 						} else {
 							ch <- prometheus.MustNewConstMetric(
 								topicPartitionLeader, prometheus.GaugeValue, float64(broker.ID()), topic, strconv.FormatInt(int64(partition), 10),
@@ -268,7 +268,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 						currentOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
 						if err != nil {
-							plog.Errorf("Can't get current offset of topic %s partition %s: %v", topic, partition, err)
+							plog.Errorf("Can't get current offset of topic %s partition %d: %v", topic, partition, err)
 						} else {
 							e.mu.Lock()
 							e.offset[topic][partition] = currentOffset
@@ -280,7 +280,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 						oldestOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetOldest)
 						if err != nil {
-							plog.Errorf("Can't get oldest offset of topic %s partition %s: %v", topic, partition, err)
+							plog.Errorf("Can't get oldest offset of topic %s partition %d: %v", topic, partition, err)
 						} else {
 							ch <- prometheus.MustNewConstMetric(
 								topicOldestOffset, prometheus.GaugeValue, float64(oldestOffset), topic, strconv.FormatInt(int64(partition), 10),
@@ -289,7 +289,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 						replicas, err := e.client.Replicas(topic, partition)
 						if err != nil {
-							plog.Errorf("Can't get replicas of topic %s partition %s: %v", topic, partition, err)
+							plog.Errorf("Can't get replicas of topic %s partition %d: %v", topic, partition, err)
 						} else {
 							ch <- prometheus.MustNewConstMetric(
 								topicPartitionReplicas, prometheus.GaugeValue, float64(len(replicas)), topic, strconv.FormatInt(int64(partition), 10),
@@ -298,7 +298,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 						inSyncReplicas, err := e.client.InSyncReplicas(topic, partition)
 						if err != nil {
-							plog.Errorf("Can't get in-sync replicas of topic %s partition %s: %v", topic, partition, err)
+							plog.Errorf("Can't get in-sync replicas of topic %s partition %d: %v", topic, partition, err)
 						} else {
 							ch <- prometheus.MustNewConstMetric(
 								topicPartitionInSyncReplicas, prometheus.GaugeValue, float64(len(inSyncReplicas)), topic, strconv.FormatInt(int64(partition), 10),
