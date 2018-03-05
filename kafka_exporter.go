@@ -377,7 +377,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 					}
 				}
 				if offsetFetchResponse, err := broker.FetchOffset(&offsetFetchRequest); err != nil {
-					plog.Errorf("Cant't get offset of group %s: %v", group.GroupId, err)
+					plog.Errorf("Can't get offset of group %s: %v", group.GroupId, err)
 				} else {
 					for topic, partitions := range offsetFetchResponse.Blocks {
 						for partition, offsetFetchResponseBlock := range partitions {
