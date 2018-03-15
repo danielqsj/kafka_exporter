@@ -113,6 +113,7 @@ type kafkaOpts struct {
 	tlsCertFile              string
 	tlsKeyFile               string
 	tlsInsecureSkipTLSVerify bool
+	kafkaVersion             string
 }
 
 // CanReadCertAndKey returns true if the certificate and key files already exists,
@@ -153,7 +154,11 @@ func canReadFile(path string) bool {
 func NewExporter(opts kafkaOpts, topicFilter string) (*Exporter, error) {
 	config := sarama.NewConfig()
 	config.ClientID = clientID
-	config.Version = sarama.V0_10_1_0
+	version, err := sarama.ParseKafkaVersion(opts.kafkaVersion)
+	if err != nil {
+		return nil, err
+	}
+	config.Version = version
 
 	if opts.useSASL {
 		config.Net.SASL.Enable = true
@@ -259,7 +264,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 					for _, partition := range partitions {
 						broker, err := e.client.Leader(topic, partition)
 						if err != nil {
-							plog.Errorf("Can't get leader of topic %s partition %s: %v", topic, partition, err)
+							plog.Errorf("Can't get leader of topic %s partition %d: %v", topic, partition, err)
 						} else {
 							ch <- prometheus.MustNewConstMetric(
 								topicPartitionLeader, prometheus.GaugeValue, float64(broker.ID()), topic, strconv.FormatInt(int64(partition), 10),
@@ -268,7 +273,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 						currentOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
 						if err != nil {
-							plog.Errorf("Can't get current offset of topic %s partition %s: %v", topic, partition, err)
+							plog.Errorf("Can't get current offset of topic %s partition %d: %v", topic, partition, err)
 						} else {
 							e.mu.Lock()
 							e.offset[topic][partition] = currentOffset
@@ -280,7 +285,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 						oldestOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetOldest)
 						if err != nil {
-							plog.Errorf("Can't get oldest offset of topic %s partition %s: %v", topic, partition, err)
+							plog.Errorf("Can't get oldest offset of topic %s partition %d: %v", topic, partition, err)
 						} else {
 							ch <- prometheus.MustNewConstMetric(
 								topicOldestOffset, prometheus.GaugeValue, float64(oldestOffset), topic, strconv.FormatInt(int64(partition), 10),
@@ -289,7 +294,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 						replicas, err := e.client.Replicas(topic, partition)
 						if err != nil {
-							plog.Errorf("Can't get replicas of topic %s partition %s: %v", topic, partition, err)
+							plog.Errorf("Can't get replicas of topic %s partition %d: %v", topic, partition, err)
 						} else {
 							ch <- prometheus.MustNewConstMetric(
 								topicPartitionReplicas, prometheus.GaugeValue, float64(len(replicas)), topic, strconv.FormatInt(int64(partition), 10),
@@ -298,7 +303,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 						inSyncReplicas, err := e.client.InSyncReplicas(topic, partition)
 						if err != nil {
-							plog.Errorf("Can't get in-sync replicas of topic %s partition %s: %v", topic, partition, err)
+							plog.Errorf("Can't get in-sync replicas of topic %s partition %d: %v", topic, partition, err)
 						} else {
 							ch <- prometheus.MustNewConstMetric(
 								topicPartitionInSyncReplicas, prometheus.GaugeValue, float64(len(inSyncReplicas)), topic, strconv.FormatInt(int64(partition), 10),
@@ -335,11 +340,11 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 				if err == sarama.ErrAlreadyConnected {
 					broker.Close()
 					if err := broker.Open(e.client.Config()); err != nil {
-						plog.Errorf("Can't connect to broker %v: %v", broker.ID(), err)
+						plog.Errorf("Can't connect to broker %d: %v", broker.ID(), err)
 						break
 					}
 				} else {
-					plog.Errorf("Can't connect to broker %v: %v", broker.ID(), err)
+					plog.Errorf("Can't connect to broker %d: %v", broker.ID(), err)
 					break
 				}
 			}
@@ -431,6 +436,7 @@ func main() {
 	kingpin.Flag("tls.cert-file", "The optional certificate file for client authentication.").Default("").StringVar(&opts.tlsCertFile)
 	kingpin.Flag("tls.key-file", "The optional key file for client authentication.").Default("").StringVar(&opts.tlsKeyFile)
 	kingpin.Flag("tls.insecure-skip-tls-verify", "If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure.").Default("false").BoolVar(&opts.tlsInsecureSkipTLSVerify)
+	kingpin.Flag("kafka.version", "Kafka broker version").Default(sarama.V1_0_0_0.String()).StringVar(&opts.kafkaVersion)
 
 	plog.AddFlags(kingpin.CommandLine)
 	kingpin.Version(version.Print("kafka_exporter"))
