@@ -19,8 +19,6 @@ import (
 	"github.com/prometheus/common/version"
 	metrics "github.com/rcrowley/go-metrics"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
-
-	_ "net/http/pprof"
 )
 
 const (
