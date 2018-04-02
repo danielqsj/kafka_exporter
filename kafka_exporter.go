@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	plog "github.com/prometheus/common/log"
 	"github.com/prometheus/common/version"
+	metrics "github.com/rcrowley/go-metrics"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -113,6 +114,7 @@ type kafkaOpts struct {
 	tlsCertFile              string
 	tlsKeyFile               string
 	tlsInsecureSkipTLSVerify bool
+	kafkaVersion             string
 }
 
 // CanReadCertAndKey returns true if the certificate and key files already exists,
@@ -153,7 +155,11 @@ func canReadFile(path string) bool {
 func NewExporter(opts kafkaOpts, topicFilter string) (*Exporter, error) {
 	config := sarama.NewConfig()
 	config.ClientID = clientID
-	config.Version = sarama.V0_10_1_0
+	version, err := sarama.ParseKafkaVersion(opts.kafkaVersion)
+	if err != nil {
+		return nil, err
+	}
+	config.Version = version
 
 	if opts.useSASL {
 		config.Net.SASL.Enable = true
@@ -210,7 +216,6 @@ func NewExporter(opts kafkaOpts, topicFilter string) (*Exporter, error) {
 	return &Exporter{
 		client:      client,
 		topicFilter: regexp.MustCompile(topicFilter),
-		offset:      make(map[string]map[int32]int64),
 	}, nil
 }
 
@@ -237,6 +242,8 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		clusterBrokers, prometheus.GaugeValue, float64(len(e.client.Brokers())),
 	)
 
+	offset := make(map[string]map[int32]int64)
+
 	if err := e.client.RefreshMetadata(); err != nil {
 		plog.Errorf("Can't refresh topics: %v, using cached data", err)
 	}
@@ -254,7 +261,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 						topicPartitions, prometheus.GaugeValue, float64(len(partitions)), topic,
 					)
 					e.mu.Lock()
-					e.offset[topic] = make(map[int32]int64, len(partitions))
+					offset[topic] = make(map[int32]int64, len(partitions))
 					e.mu.Unlock()
 					for _, partition := range partitions {
 						broker, err := e.client.Leader(topic, partition)
@@ -271,7 +278,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 							plog.Errorf("Can't get current offset of topic %s partition %d: %v", topic, partition, err)
 						} else {
 							e.mu.Lock()
-							e.offset[topic][partition] = currentOffset
+							offset[topic][partition] = currentOffset
 							e.mu.Unlock()
 							ch <- prometheus.MustNewConstMetric(
 								topicCurrentOffset, prometheus.GaugeValue, float64(currentOffset), topic, strconv.FormatInt(int64(partition), 10),
@@ -331,23 +338,14 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	}
 	if len(e.client.Brokers()) > 0 {
 		for _, broker := range e.client.Brokers() {
-			if err := broker.Open(e.client.Config()); err != nil {
-				if err == sarama.ErrAlreadyConnected {
-					broker.Close()
-					if err := broker.Open(e.client.Config()); err != nil {
-						plog.Errorf("Can't connect to broker %v: %v", broker.ID(), err)
-						break
-					}
-				} else {
-					plog.Errorf("Can't connect to broker %v: %v", broker.ID(), err)
-					break
-				}
+			if err := broker.Open(e.client.Config()); err != nil && err != sarama.ErrAlreadyConnected {
+				plog.Errorf("Can't connect to broker %d: %v", broker.ID(), err)
 			}
+			defer broker.Close()
 
 			groups, err := broker.ListGroups(&sarama.ListGroupsRequest{})
 			if err != nil {
 				plog.Errorf("Can't get consumer group: %v", err)
-				broker.Close()
 				break
 			}
 			groupIds := make([]string, 0)
@@ -358,7 +356,6 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 			describeGroups, err := broker.DescribeGroups(&sarama.DescribeGroupsRequest{Groups: groupIds})
 			if err != nil {
 				plog.Errorf("Can't get describe groups: %v", err)
-				broker.Close()
 				break
 			}
 
@@ -385,7 +382,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 								consumergroupCurrentOffset, prometheus.GaugeValue, float64(offsetFetchResponseBlock.Offset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
 							)
 							e.mu.Lock()
-							if offset, ok := e.offset[topic][partition]; ok {
+							if offset, ok := offset[topic][partition]; ok {
 								// Kafka will return -1 if there is no offset associated with a topic-partition under that consumer group
 								// forcing lag to -1 to be able to alert on that
 								var lag int64
@@ -403,12 +400,14 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 					}
 				}
 			}
-			broker.Close()
+
+			plog.Debug("Closing broker")
 		}
 	}
 }
 
 func init() {
+	metrics.UseNilMetrics = true
 	prometheus.MustRegister(version.NewCollector("kafka_exporter"))
 }
 
@@ -431,6 +430,7 @@ func main() {
 	kingpin.Flag("tls.cert-file", "The optional certificate file for client authentication.").Default("").StringVar(&opts.tlsCertFile)
 	kingpin.Flag("tls.key-file", "The optional key file for client authentication.").Default("").StringVar(&opts.tlsKeyFile)
 	kingpin.Flag("tls.insecure-skip-tls-verify", "If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure.").Default("false").BoolVar(&opts.tlsInsecureSkipTLSVerify)
+	kingpin.Flag("kafka.version", "Kafka broker version").Default(sarama.V1_0_0_0.String()).StringVar(&opts.kafkaVersion)
 
 	plog.AddFlags(kingpin.CommandLine)
 	kingpin.Version(version.Print("kafka_exporter"))
