@@ -17,8 +17,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	plog "github.com/prometheus/common/log"
 	"github.com/prometheus/common/version"
-	metrics "github.com/rcrowley/go-metrics"
-	kingpin "gopkg.in/alecthomas/kingpin.v2"
+	"github.com/rcrowley/go-metrics"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 const (
