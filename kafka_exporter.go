@@ -99,7 +99,6 @@ var (
 type Exporter struct {
 	client      sarama.Client
 	topicFilter *regexp.Regexp
-	offset      map[string]map[int32]int64
 	mu          sync.Mutex
 }
 
