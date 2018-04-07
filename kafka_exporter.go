@@ -339,13 +339,14 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		for _, broker := range e.client.Brokers() {
 			if err := broker.Open(e.client.Config()); err != nil && err != sarama.ErrAlreadyConnected {
 				plog.Errorf("Can't connect to broker %d: %v", broker.ID(), err)
+				continue
 			}
 			defer broker.Close()
 
 			groups, err := broker.ListGroups(&sarama.ListGroupsRequest{})
 			if err != nil {
 				plog.Errorf("Can't get consumer group: %v", err)
-				break
+				continue
 			}
 			groupIds := make([]string, 0)
 			for groupId := range groups.Groups {
@@ -355,7 +356,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 			describeGroups, err := broker.DescribeGroups(&sarama.DescribeGroupsRequest{Groups: groupIds})
 			if err != nil {
 				plog.Errorf("Can't get describe groups: %v", err)
-				break
+				continue
 			}
 			for _, group := range describeGroups.Groups {
 				offsetFetchRequest := sarama.OffsetFetchRequest{ConsumerGroup: group.GroupId, Version: 1}
