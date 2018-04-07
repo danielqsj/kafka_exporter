@@ -154,11 +154,11 @@ func canReadFile(path string) bool {
 func NewExporter(opts kafkaOpts, topicFilter string) (*Exporter, error) {
 	config := sarama.NewConfig()
 	config.ClientID = clientID
-	version, err := sarama.ParseKafkaVersion(opts.kafkaVersion)
+	kafkaVersion, err := sarama.ParseKafkaVersion(opts.kafkaVersion)
 	if err != nil {
 		return nil, err
 	}
-	config.Version = version
+	config.Version = kafkaVersion
 
 	if opts.useSASL {
 		config.Net.SASL.Enable = true
@@ -206,10 +206,10 @@ func NewExporter(opts kafkaOpts, topicFilter string) (*Exporter, error) {
 	client, err := sarama.NewClient(opts.uri, config)
 
 	if err != nil {
-		fmt.Println("Error Init Kafka Client")
+		plog.Errorln("Error Init Kafka Client")
 		panic(err)
 	}
-	fmt.Println("Done Init Clients")
+	plog.Infoln("Done Init Clients")
 
 	// Init our exporter.
 	return &Exporter{
@@ -357,44 +357,47 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 				plog.Errorf("Can't get describe groups: %v", err)
 				break
 			}
-
 			for _, group := range describeGroups.Groups {
 				offsetFetchRequest := sarama.OffsetFetchRequest{ConsumerGroup: group.GroupId, Version: 1}
-				for _, member := range group.Members {
-					assignment, err := member.GetMemberAssignment()
-					if err != nil {
-						plog.Errorf("Can't get member assignment of group: %s: %v", group.GroupId, err)
-					} else {
-						for topic, partitions := range assignment.Topics {
-							for _, partition := range partitions {
-								offsetFetchRequest.AddPartition(topic, partition)
-							}
-						}
+				for topic, partitions := range offset {
+					for partition := range partitions {
+						offsetFetchRequest.AddPartition(topic, partition)
 					}
 				}
 				if offsetFetchResponse, err := broker.FetchOffset(&offsetFetchRequest); err != nil {
 					plog.Errorf("Can't get offset of group %s: %v", group.GroupId, err)
 				} else {
 					for topic, partitions := range offsetFetchResponse.Blocks {
-						for partition, offsetFetchResponseBlock := range partitions {
-							ch <- prometheus.MustNewConstMetric(
-								consumergroupCurrentOffset, prometheus.GaugeValue, float64(offsetFetchResponseBlock.Offset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
-							)
-							e.mu.Lock()
-							if offset, ok := offset[topic][partition]; ok {
-								// Kafka will return -1 if there is no offset associated with a topic-partition under that consumer group
-								// forcing lag to -1 to be able to alert on that
-								var lag int64
-								if offsetFetchResponseBlock.Offset == -1 {
-									lag = -1
-								} else {
-									lag = offset - offsetFetchResponseBlock.Offset
-								}
-								ch <- prometheus.MustNewConstMetric(
-									consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
-								)
+						// If the topic is not consumed by that consumer group, skip it
+						topicConsumed := false
+						for _, offsetFetchResponseBlock := range partitions {
+							// Kafka will return -1 if there is no offset associated with a topic-partition under that consumer group
+							if offsetFetchResponseBlock.Offset != -1 {
+								topicConsumed = true
+								break
 							}
-							e.mu.Unlock()
+						}
+						if topicConsumed {
+							for partition, offsetFetchResponseBlock := range partitions {
+								ch <- prometheus.MustNewConstMetric(
+									consumergroupCurrentOffset, prometheus.GaugeValue, float64(offsetFetchResponseBlock.Offset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
+								)
+								e.mu.Lock()
+								if offset, ok := offset[topic][partition]; ok {
+									// If the topic is consumed by that consumer group, but no offset associated with the partition
+									// forcing lag to -1 to be able to alert on that
+									var lag int64
+									if offsetFetchResponseBlock.Offset == -1 {
+										lag = -1
+									} else {
+										lag = offset - offsetFetchResponseBlock.Offset
+									}
+									ch <- prometheus.MustNewConstMetric(
+										consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
+									)
+								}
+								e.mu.Unlock()
+							}
 						}
 					}
 				}
