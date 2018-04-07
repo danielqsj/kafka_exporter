@@ -1,7 +1,7 @@
 kafka_exporter
 ==============
 
-[![Build Status](https://travis-ci.org/danielqsj/kafka_exporter.svg?branch=master)](https://travis-ci.org/danielqsj/kafka_exporter)[![Docker Pulls](https://img.shields.io/docker/pulls/danielqsj/kafka-exporter.svg)](https://hub.docker.com/r/danielqsj/kafka-exporter)[![Go Report Card](https://goreportcard.com/badge/github.com/danielqsj/kafka_exporter)](https://goreportcard.com/report/github.com/danielqsj/kafka_exporter)[![Language](https://img.shields.io/badge/language-Go-red.svg)](https://github.com/danielqsj/kafka-exporter)[![GitHub release](https://img.shields.io/badge/release-1.0.1-green.svg)](https://github.com/alibaba/derrick/releases)[![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
+[![Build Status](https://travis-ci.org/danielqsj/kafka_exporter.svg?branch=master)](https://travis-ci.org/danielqsj/kafka_exporter)[![Docker Pulls](https://img.shields.io/docker/pulls/danielqsj/kafka-exporter.svg)](https://hub.docker.com/r/danielqsj/kafka-exporter)[![Go Report Card](https://goreportcard.com/badge/github.com/danielqsj/kafka_exporter)](https://goreportcard.com/report/github.com/danielqsj/kafka_exporter)[![Language](https://img.shields.io/badge/language-Go-red.svg)](https://github.com/danielqsj/kafka-exporter)[![GitHub release](https://img.shields.io/badge/release-1.1.0-green.svg)](https://github.com/alibaba/derrick/releases)[![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
 
 Kafka exporter for Prometheus. For other metrics from Kafka, have a look at the [JMX exporter](https://github.com/prometheus/jmx_exporter).
 
@@ -23,6 +23,9 @@ Table of Contents
 	-	[Brokers](#brokers)
 	-	[Topics](#topics)
 	-	[Consumer Groups](#consumer-groups)
+-   [Contribute](#contribute)
+-   [Donation](#donation)
+-   [License](#license)
 
 Compatibility
 -------------
@@ -89,6 +92,7 @@ This image is configurable using different flags
 | Flag name                    | Default    | Description                                                                                         |
 | ---------------------------- | ---------- | --------------------------------------------------------------------------------------------------- |
 | kafka.server                 | kafka:9092 | Addresses (host:port) of Kafka server                                                               |
+| kafka.version                | 1.0.0      | Kafka broker version                                                                                |
 | sasl.enabled                 | false      | Connect using SASL/PLAIN                                                                            |
 | sasl.handshake               | true       | Only set this to false if using a non-Kafka SASL proxy                                              |
 | sasl.username                |            | SASL user name                                                                                      |
@@ -207,3 +211,22 @@ kafka_consumergroup_current_offset{consumergroup="KMOffsetCache-kafka-manager-38
 # TYPE kafka_consumergroup_lag gauge
 kafka_consumergroup_lag{consumergroup="KMOffsetCache-kafka-manager-3806276532-ml44w",partition="0",topic="__consumer_offsets"} 1
 ```
+
+Contribute
+----------
+
+If you like Kafka Exporter, please give me a star. This will help more people know Kafka Exporter.
+
+Please feel free to send me [pull requests](https://github.com/danielqsj/kafka_exporter/pulls).
+
+Donation
+--------
+
+Your donation will encourage me to continue to improve Kafka Exporter. Support Alipay donation.
+
+![](https://github.com/danielqsj/kafka_exporter/raw/master/alipay.jpg)
+
+License
+-------
+
+Code is licensed under the [Apache License 2.0](https://github.com/danielqsj/kafka_exporter/blob/master/LICENSE).
