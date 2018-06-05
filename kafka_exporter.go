@@ -99,6 +99,7 @@ var (
 type Exporter struct {
 	client      sarama.Client
 	topicFilter *regexp.Regexp
+	groupFilter *regexp.Regexp
 	mu          sync.Mutex
 }
 
@@ -151,7 +152,7 @@ func canReadFile(path string) bool {
 }
 
 // NewExporter returns an initialized Exporter.
-func NewExporter(opts kafkaOpts, topicFilter string) (*Exporter, error) {
+func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Exporter, error) {
 	config := sarama.NewConfig()
 	config.ClientID = clientID
 	kafkaVersion, err := sarama.ParseKafkaVersion(opts.kafkaVersion)
@@ -215,6 +216,7 @@ func NewExporter(opts kafkaOpts, topicFilter string) (*Exporter, error) {
 	return &Exporter{
 		client:      client,
 		topicFilter: regexp.MustCompile(topicFilter),
+		groupFilter: regexp.MustCompile(groupFilter),
 	}, nil
 }
 
@@ -361,7 +363,9 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		}
 		groupIds := make([]string, 0)
 		for groupId := range groups.Groups {
-			groupIds = append(groupIds, groupId)
+			if e.groupFilter.MatchString(groupId) {
+				groupIds = append(groupIds, groupId)
+			}
 		}
 
 		describeGroups, err := broker.DescribeGroups(&sarama.DescribeGroupsRequest{Groups: groupIds})
@@ -439,6 +443,7 @@ func main() {
 		listenAddress = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9308").String()
 		metricsPath   = kingpin.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
 		topicFilter   = kingpin.Flag("topic.filter", "Regex that determines which topics to collect.").Default(".*").String()
+		groupFilter   = kingpin.Flag("group.filter", "Regex that determines which topics to collect.").Default(".*").String()
 		logSarama     = kingpin.Flag("log.enable-sarama", "Turn on Sarama logging.").Default("false").Bool()
 
 		opts = kafkaOpts{}
@@ -467,7 +472,7 @@ func main() {
 		sarama.Logger = log.New(os.Stdout, "[sarama] ", log.LstdFlags)
 	}
 
-	exporter, err := NewExporter(opts, *topicFilter)
+	exporter, err := NewExporter(opts, *topicFilter, *groupFilter)
 	if err != nil {
 		plog.Fatalln(err)
 	}
