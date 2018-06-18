@@ -391,6 +391,12 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 					}
 					if topicConsumed {
 						for partition, offsetFetchResponseBlock := range partitions {
+							err := offsetFetchResponseBlock.Err
+							if err != sarama.ErrNoError {
+								plog.Errorln("Error for  partition %d :%v", partition, err.Error())
+								continue
+							}
+
 							ch <- prometheus.MustNewConstMetric(
 								consumergroupCurrentOffset, prometheus.GaugeValue, float64(offsetFetchResponseBlock.Offset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
 							)
