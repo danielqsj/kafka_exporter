@@ -1,0 +1,5 @@
+.*
+vendor
+Dockerfile
+Makefile
+README.md
