@@ -65,6 +65,12 @@
   revision = "553a641470496b2327abcac10b36396bd98e45c9"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/krallistic/kazoo-go"
+  packages = ["."]
+  revision = "a15279744f4e4a136cc4251ca8be36fc00798f2c"
+
+[[projects]]
   name = "github.com/matttproud/golang_protobuf_extensions"
   packages = ["pbutil"]
   revision = "3247c84500bff8d9fb6d579d800f20b3e091582c"
@@ -125,6 +131,12 @@
   revision = "1f30fe9094a513ce4c700b9a54458bbb0c96996c"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/samuel/go-zookeeper"
+  packages = ["zk"]
+  revision = "c4fab1ac1bec58281ad0667dc3f0907a9476ac47"
+
+[[projects]]
   name = "github.com/sirupsen/logrus"
   packages = ["."]
   revision = "f006c2ac4710855cf0f916dd6b77acf6b048dc6e"
@@ -156,6 +168,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "24fc175e726a44a6f651daa65ac013bee7a1da9eb6daaab6c47410b0f19f0eac"
+  inputs-digest = "1e33ebc738ac41c7c7e4a4a6bd1d52c12483f2f7b1b3f408ec8b6524252797d3"
   solver-name = "gps-cdcl"
   solver-version = 1
