@@ -23,7 +23,7 @@ Table of Contents
 	-	[Brokers](#brokers)
 	-	[Topics](#topics)
 	-	[Consumer Groups](#consumer-groups)
--	[Grafana Dashboard](#dashboard)	
+-	[Grafana Dashboard](#grafana-dashboard)	
 -   [Contribute](#contribute)
 -   [Donation](#donation)
 -   [License](#license)
