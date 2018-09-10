@@ -87,27 +87,27 @@ docker run -ti --rm -p 9308:9308 danielqsj/kafka-exporter --kafka.server=kafka:9
 Flags
 -----
 
-This image is configurable using different flags
+This image is configurable using different flags or environment variables
 
-| Flag name                    | Default    | Description                                                                                         |
-| ---------------------------- | ---------- | --------------------------------------------------------------------------------------------------- |
-| kafka.server                 | kafka:9092 | Addresses (host:port) of Kafka server                                                               |
-| kafka.version                | 1.0.0      | Kafka broker version                                                                                |
-| sasl.enabled                 | false      | Connect using SASL/PLAIN                                                                            |
-| sasl.handshake               | true       | Only set this to false if using a non-Kafka SASL proxy                                              |
-| sasl.username                |            | SASL user name                                                                                      |
-| sasl.password                |            | SASL user password                                                                                  |
-| tls.enabled                  | false      | Connect using TLS                                                                                   |
-| tls.ca-file                  |            | The optional certificate authority file for TLS client authentication                               |
-| tls.cert-file                |            | The optional certificate file for client authentication                                             |
-| tls.key-file                 |            | The optional key file for client authentication                                                     |
-| tls.insecure-skip-tls-verify | false      | If true, the server's certificate will not be checked for validity                                  |
-| topic.filter                 | .*         | Regex that determines which topics to collect                                                       |
-| group.filter                 | .*         | Regex that determines which consumer groups to collect                                              |
-| web.listen-address           | :9308      | Address to listen on for web interface and telemetry                                                |
-| web.telemetry-path           | /metrics   | Path under which to expose metrics                                                                  |
-| log.level                    | info       | Only log messages with the given severity or above. Valid levels: [debug, info, warn, error, fatal] |
-| log.enable-sarama            | false      | Turn on Sarama logging                                                                              |
+| Flag name                    | Env var name                 | Default    | Description                                                                                         |
+| ---------------------------- | -----------------------------| ---------- | --------------------------------------------------------------------------------------------------- |
+| kafka.server                 | KAFKA_SERVER                 | kafka:9092 | Addresses (host:port) of Kafka server                                                               |
+| kafka.version                | KAFKA_VERSION                | 1.0.0      | Kafka broker version                                                                                |
+| sasl.enabled                 | SASL_ENABLED                 | false      | Connect using SASL/PLAIN                                                                            |
+| sasl.handshake               | SASL_HANDSHAKE               | true       | Only set this to false if using a non-Kafka SASL proxy                                              |
+| sasl.username                | SASL_USERNAME                |            | SASL user name                                                                                      |
+| sasl.password                | SASL_PASSWORD                |            | SASL user password                                                                                  |
+| tls.enabled                  | TLS_ENABLED                  | false      | Connect using TLS                                                                                   |
+| tls.ca-file                  | TLS_CA_FILE                  |            | The optional certificate authority file for TLS client authentication                               |
+| tls.cert-file                | TLS_CERT_FILE                |            | The optional certificate file for client authentication                                             |
+| tls.key-file                 | TLS_KEY_FILE                 |            | The optional key file for client authentication                                                     |
+| tls.insecure-skip-tls-verify | TLS_INSECURE_SKIP_TLS_VERIFY | false      | If true, the server's certificate will not be checked for validity                                  |
+| topic.filter                 | TOPIC_FILTER                 | .*         | Regex that determines which topics to collect                                                       |
+| group.filter                 | GROUP_FILTER                 | .*         | Regex that determines which consumer groups to collect                                              |
+| web.listen-address           | WEB_LISTEN_ADDRESS           | :9308      | Address to listen on for web interface and telemetry                                                |
+| web.telemetry-path           | WEB_TELEMETRY_PATH           | /metrics   | Path under which to expose metrics                                                                  |
+| log.level                    | LOG_LEVEL                    | info       | Only log messages with the given severity or above. Valid levels: [debug, info, warn, error, fatal] |
+| log.enable-sarama            | LOG_ENABLE_SARAMA            | false      | Turn on Sarama logging                                                                              |
 
 ### Notes
 
