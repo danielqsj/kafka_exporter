@@ -23,6 +23,7 @@ Table of Contents
 	-	[Brokers](#brokers)
 	-	[Topics](#topics)
 	-	[Consumer Groups](#consumer-groups)
+-	[Grafana Dashboard](#grafana-dashboard)	
 -   [Contribute](#contribute)
 -   [Donation](#donation)
 -   [License](#license)
@@ -212,6 +213,13 @@ kafka_consumergroup_current_offset{consumergroup="KMOffsetCache-kafka-manager-38
 # TYPE kafka_consumergroup_lag gauge
 kafka_consumergroup_lag{consumergroup="KMOffsetCache-kafka-manager-3806276532-ml44w",partition="0",topic="__consumer_offsets"} 1
 ```
+
+Grafana Dashboard
+-------
+
+Grafana Dashboard ID: 7589, name: Kafka Exporter Overview.
+
+For details of the dashboard please see [Kafka Exporter Overview](https://grafana.com/dashboards/7589).
 
 Contribute
 ----------
