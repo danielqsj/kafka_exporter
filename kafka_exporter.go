@@ -424,9 +424,13 @@ func main() {
 	plog.Infoln("Build context", version.BuildContext())
 
 	labels := make(map[string]string)
-	for _, label := range strings.Split(opts.labels, ",") {
-		splitted := strings.Split(label, "=")
-		labels[splitted[0]] = splitted[1]
+
+	// Protect against empty labels
+	if opts.labels != "" {
+		for _, label := range strings.Split(opts.labels, ",") {
+			splitted := strings.Split(label, "=")
+			labels[splitted[0]] = splitted[1]
+		}
 	}
 
 	clusterBrokers = prometheus.NewDesc(
