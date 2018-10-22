@@ -426,7 +426,9 @@ func main() {
 	labels := make(map[string]string)
 	for _, label := range strings.Split(opts.labels, ",") {
 		splitted := strings.Split(label, "=")
-		labels[splitted[0]] = splitted[1]
+		if len(splitted) >= 2 {
+			labels[splitted[0]] = splitted[1]
+		}
 	}
 
 	clusterBrokers = prometheus.NewDesc(
