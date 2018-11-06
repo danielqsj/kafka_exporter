@@ -440,7 +440,7 @@ func init() {
 }
 
 func main() {
-	app := kingpin.Version(version.Print("kafka_exporter")).DefaultEnvars()
+	app := kingpin.New("kafka_exporter", "").Version(version.Print("kafka_exporter")).DefaultEnvars()
 	var (
 		listenAddress = app.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9308").String()
 		metricsPath   = app.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
@@ -453,7 +453,7 @@ func main() {
 	app.Flag("kafka.server", "Address (host:port) of Kafka server.").Default("kafka:9092").StringsVar(&opts.uri)
 	app.Flag("sasl.enabled", "Connect using SASL/PLAIN.").Default("false").BoolVar(&opts.useSASL)
 	app.Flag("sasl.handshake", "Only set this to false if using a non-Kafka SASL proxy.").Default("true").BoolVar(&opts.useSASLHandshake)
-	app.Flag("sasl.username", "SASL user name.").Default("").StringVar(&opts.saslUsername)
+	app.Flag("sasl.username", "SASL user name.").Default("").Envar("SASL_USERNAME").StringVar(&opts.saslUsername)
 	app.Flag("sasl.password", "SASL user password.").Default("").StringVar(&opts.saslPassword)
 	app.Flag("tls.enabled", "Connect using TLS.").Default("false").BoolVar(&opts.useTLS)
 	app.Flag("tls.ca-file", "The optional certificate authority file for TLS client authentication.").Default("").StringVar(&opts.tlsCAFile)
