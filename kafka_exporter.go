@@ -442,9 +442,9 @@ func main() {
 	// Protect against empty labels
 	if opts.labels != "" {
 		for _, label := range strings.Split(opts.labels, ",") {
-		  splitted := strings.Split(label, "=")
-		  if len(splitted) >= 2 {
-			  labels[splitted[0]] = splitted[1]
+			splitted := strings.Split(label, "=")
+			if len(splitted) >= 2 {
+				labels[splitted[0]] = splitted[1]
 		}
 	}
 
