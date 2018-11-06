@@ -445,6 +445,7 @@ func main() {
 			splitted := strings.Split(label, "=")
 			if len(splitted) >= 2 {
 				labels[splitted[0]] = splitted[1]
+			}
 		}
 	}
 
