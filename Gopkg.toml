@@ -1,6 +1,6 @@
 [[constraint]]
   name = "github.com/Shopify/sarama"
-  version = "1.17.0"
+  version = "1.19.0"
 
 [[constraint]]
   name = "github.com/prometheus/client_golang"
@@ -12,4 +12,4 @@
 
 [[constraint]]
   name = "gopkg.in/alecthomas/kingpin.v2"
-  version = "2.2.5"
+  version = "2.2.6"
