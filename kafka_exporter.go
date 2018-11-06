@@ -466,8 +466,8 @@ func main() {
 	app.Flag("kafka.labels", "Kafka cluster name").Default("").StringVar(&opts.labels)
 
 	plog.AddFlags(kingpin.CommandLine)
-	kingpin.HelpFlag.Short('h')
-	kingpin.Parse()
+	app.HelpFlag.Short('h')
+	app.Parse([]string{})
 
 	plog.Infoln("Starting kafka_exporter", version.Info())
 	plog.Infoln("Build context", version.BuildContext())
