@@ -440,7 +440,7 @@ func init() {
 }
 
 func main() {
-	app := kingpin.Version(version.Print("kafka_exporter")).DefaultEnvars()
+	app := kingpin.New("kafka_exporter", "").Version(version.Print("kafka_exporter")).DefaultEnvars()
 	var (
 		listenAddress = app.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9308").String()
 		metricsPath   = app.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
