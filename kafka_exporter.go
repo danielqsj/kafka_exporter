@@ -12,8 +12,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
 	"github.com/Shopify/sarama"
-	kazoo "github.com/krallistic/kazoo-go"
+	"github.com/krallistic/kazoo-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	plog "github.com/prometheus/common/log"
@@ -41,7 +42,7 @@ var (
 	consumergroupCurrentOffsetSum      *prometheus.Desc
 	consumergroupLag                   *prometheus.Desc
 	consumergroupLagSum                *prometheus.Desc
-	consumergroupLagZookeeper		   *prometheus.Desc
+	consumergroupLagZookeeper          *prometheus.Desc
 )
 
 // Exporter collects Kafka stats from the given server and exports them using
@@ -464,7 +465,7 @@ func main() {
 	kingpin.Flag("kafka.labels", "Kafka cluster name").Default("").StringVar(&opts.labels)
 
 	plog.AddFlags(kingpin.CommandLine)
-	kingpin.Version(version.Print("kafka_exporter"))
+	kingpin.Version(version.Print("kafka_exporter")).DefaultEnvars()
 	kingpin.HelpFlag.Short('h')
 	kingpin.Parse()
 
@@ -488,16 +489,19 @@ func main() {
 		"Number of Brokers in the Kafka Cluster.",
 		nil, labels,
 	)
+
 	topicPartitions = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "topic", "partitions"),
 		"Number of partitions for this Topic",
 		[]string{"topic"}, labels,
 	)
+
 	topicCurrentOffset = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "topic", "partition_current_offset"),
 		"Current Offset of a Broker at Topic/Partition",
 		[]string{"topic", "partition"}, labels,
 	)
+
 	topicOldestOffset = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "topic", "partition_oldest_offset"),
 		"Oldest Offset of a Broker at Topic/Partition",
@@ -551,7 +555,7 @@ func main() {
 		"Current Approximate Lag of a ConsumerGroup at Topic/Partition",
 		[]string{"consumergroup", "topic", "partition"}, labels,
 	)
-	
+
 	consumergroupLagZookeeper = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "consumergroupzookeeper", "lag_zookeeper"),
 		"Current Approximate Lag(zookeeper) of a ConsumerGroup at Topic/Partition",
