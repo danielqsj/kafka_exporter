@@ -440,7 +440,7 @@ func init() {
 }
 
 func main() {
-	app := kingpin.New("kafka_exporter", "").Version(version.Print("kafka_exporter")).DefaultEnvars()
+	app := kingpin.Version(version.Print("kafka_exporter")).DefaultEnvars()
 	var (
 		listenAddress = app.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9308").String()
 		metricsPath   = app.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
@@ -465,9 +465,9 @@ func main() {
 	app.Flag("zookeeper.server", "Address (hosts) of zookeeper server.").Default("localhost:2181").StringsVar(&opts.uriZookeeper)
 	app.Flag("kafka.labels", "Kafka cluster name").Default("").StringVar(&opts.labels)
 
-	plog.AddFlags(kingpin.CommandLine)
-	app.HelpFlag.Short('h')
-	app.Parse([]string{})
+	plog.AddFlags(app)
+	app.GetFlag("help").Short('h')
+	kingpin.MustParse(app.Parse(os.Args[1:]))
 
 	plog.Infoln("Starting kafka_exporter", version.Info())
 	plog.Infoln("Build context", version.BuildContext())
