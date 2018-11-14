@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Shopify/sarama"
 	kazoo "github.com/krallistic/kazoo-go"
@@ -49,12 +50,14 @@ var (
 // Exporter collects Kafka stats from the given server and exports them using
 // the prometheus metrics package.
 type Exporter struct {
-	client          sarama.Client
-	topicFilter     *regexp.Regexp
-	groupFilter     *regexp.Regexp
-	mu              sync.Mutex
-	useZooKeeperLag bool
-	zookeeperClient *kazoo.Kazoo
+	client                  sarama.Client
+	topicFilter             *regexp.Regexp
+	groupFilter             *regexp.Regexp
+	mu                      sync.Mutex
+	useZooKeeperLag         bool
+	zookeeperClient         *kazoo.Kazoo
+	nextMetadataRefresh     time.Time
+	metadataRefreshInterval time.Duration
 }
 
 type kafkaOpts struct {
@@ -72,6 +75,7 @@ type kafkaOpts struct {
 	useZooKeeperLag          bool
 	uriZookeeper             []string
 	labels                   string
+	metadataRefreshInterval  string
 }
 
 // CanReadCertAndKey returns true if the certificate and key files already exists,
@@ -174,13 +178,21 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 	}
 	plog.Infoln("Done Init Clients")
 
+	interval, err := time.ParseDuration(opts.metadataRefreshInterval)
+	if err != nil {
+		plog.Errorln("Cannot parse refresh metadata interval")
+		panic(err)
+	}
+
 	// Init our exporter.
 	return &Exporter{
-		client:          client,
-		topicFilter:     regexp.MustCompile(topicFilter),
-		groupFilter:     regexp.MustCompile(groupFilter),
-		useZooKeeperLag: opts.useZooKeeperLag,
-		zookeeperClient: zookeeperClient,
+		client:                  client,
+		topicFilter:             regexp.MustCompile(topicFilter),
+		groupFilter:             regexp.MustCompile(groupFilter),
+		useZooKeeperLag:         opts.useZooKeeperLag,
+		zookeeperClient:         zookeeperClient,
+		nextMetadataRefresh:     time.Now(),
+		metadataRefreshInterval: interval,
 	}, nil
 }
 
@@ -213,9 +225,17 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 	offset := make(map[string]map[int32]int64)
 
-	if err := e.client.RefreshMetadata(); err != nil {
-		plog.Errorf("Cannot refresh topics, using cached data: %v", err)
+	now := time.Now()
+	if now.After(e.nextMetadataRefresh) {
+		plog.Info("Refreshing client metadata")
+
+		if err := e.client.RefreshMetadata(); err != nil {
+			plog.Errorf("Cannot refresh topics, using cached data: %v", err)
+		}
+
+		e.nextMetadataRefresh = now.Add(e.metadataRefreshInterval)
 	}
+
 	topics, err := e.client.Topics()
 	if err != nil {
 		plog.Errorf("Cannot get topics: %v", err)
@@ -467,6 +487,7 @@ func main() {
 	kingpin.Flag("use.consumelag.zookeeper", "if you need to use a group from zookeeper").Default("false").BoolVar(&opts.useZooKeeperLag)
 	kingpin.Flag("zookeeper.server", "Address (hosts) of zookeeper server.").Default("localhost:2181").StringsVar(&opts.uriZookeeper)
 	kingpin.Flag("kafka.labels", "Kafka cluster name").Default("").StringVar(&opts.labels)
+	kingpin.Flag("refresh.metadata", "Metadata refresh interval").Default("30s").StringVar(&opts.metadataRefreshInterval)
 
 	plog.AddFlags(kingpin.CommandLine)
 	kingpin.Version(version.Print("kafka_exporter"))
