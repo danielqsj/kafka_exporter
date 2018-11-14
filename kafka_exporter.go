@@ -170,6 +170,14 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		zookeeperClient, err = kazoo.NewKazoo(opts.uriZookeeper, nil)
 	}
 
+	interval, err := time.ParseDuration(opts.metadataRefreshInterval)
+	if err != nil {
+		plog.Errorln("Cannot parse refresh metadata interval")
+		panic(err)
+	}
+
+	config.Metadata.RefreshFrequency = interval
+
 	client, err := sarama.NewClient(opts.uri, config)
 
 	if err != nil {
@@ -177,12 +185,6 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		panic(err)
 	}
 	plog.Infoln("Done Init Clients")
-
-	interval, err := time.ParseDuration(opts.metadataRefreshInterval)
-	if err != nil {
-		plog.Errorln("Cannot parse refresh metadata interval")
-		panic(err)
-	}
 
 	// Init our exporter.
 	return &Exporter{
@@ -226,6 +228,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	offset := make(map[string]map[int32]int64)
 
 	now := time.Now()
+
 	if now.After(e.nextMetadataRefresh) {
 		plog.Info("Refreshing client metadata")
 
