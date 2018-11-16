@@ -172,7 +172,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 
 	interval, err := time.ParseDuration(opts.metadataRefreshInterval)
 	if err != nil {
-		plog.Errorln("Cannot parse refresh metadata interval")
+		plog.Errorln("Cannot parse metadata refresh interval")
 		panic(err)
 	}
 
