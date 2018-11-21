@@ -1,0 +1,58 @@
+# github.com/Shopify/sarama v1.17.0
+github.com/Shopify/sarama
+# github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc
+github.com/alecthomas/template
+github.com/alecthomas/template/parse
+# github.com/alecthomas/units v0.0.0-20151022065526-2efee857e7cf
+github.com/alecthomas/units
+# github.com/beorn7/perks v0.0.0-20160804104726-4c0e84591b9a
+github.com/beorn7/perks/quantile
+# github.com/davecgh/go-spew v1.1.1
+github.com/davecgh/go-spew/spew
+# github.com/eapache/go-resiliency v1.0.0
+github.com/eapache/go-resiliency/breaker
+# github.com/eapache/go-xerial-snappy v0.0.0-20160609142408-bb955e01b934
+github.com/eapache/go-xerial-snappy
+# github.com/eapache/queue v1.0.2
+github.com/eapache/queue
+# github.com/golang/protobuf v1.2.0
+github.com/golang/protobuf/proto
+# github.com/golang/snappy v0.0.0-20170215233205-553a64147049
+github.com/golang/snappy
+# github.com/krallistic/kazoo-go v0.0.0-20170526135507-a15279744f4e
+github.com/krallistic/kazoo-go
+# github.com/matttproud/golang_protobuf_extensions v1.0.0
+github.com/matttproud/golang_protobuf_extensions/pbutil
+# github.com/pierrec/lz4 v0.0.0-20161206202305-5c9560bfa9ac
+github.com/pierrec/lz4
+# github.com/pierrec/xxHash v0.1.1
+github.com/pierrec/xxHash/xxHash32
+# github.com/prometheus/client_golang v0.8.0
+github.com/prometheus/client_golang/prometheus
+github.com/prometheus/client_golang/prometheus/promhttp
+# github.com/prometheus/client_model v0.0.0-20170216185247-6f3806018612
+github.com/prometheus/client_model/go
+# github.com/prometheus/common v0.0.0-20170908161822-2f17f4a9d485
+github.com/prometheus/common/log
+github.com/prometheus/common/version
+github.com/prometheus/common/expfmt
+github.com/prometheus/common/model
+github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg
+# github.com/prometheus/procfs v0.0.0-20170703101242-e645f4e5aaa8
+github.com/prometheus/procfs
+github.com/prometheus/procfs/xfs
+# github.com/rcrowley/go-metrics v0.0.0-20161128210544-1f30fe9094a5
+github.com/rcrowley/go-metrics
+# github.com/samuel/go-zookeeper v0.0.0-20180130194729-c4fab1ac1bec
+github.com/samuel/go-zookeeper/zk
+# github.com/sirupsen/logrus v1.0.3
+github.com/sirupsen/logrus
+# golang.org/x/crypto v0.0.0-20170925111901-847319b7fc94
+golang.org/x/crypto/ssh/terminal
+# golang.org/x/sys v0.0.0-20180909124046-d0be0721c37e
+golang.org/x/sys/windows/svc/eventlog
+golang.org/x/sys/unix
+golang.org/x/sys/windows
+golang.org/x/sys/windows/registry
+# gopkg.in/alecthomas/kingpin.v2 v2.2.5
+gopkg.in/alecthomas/kingpin.v2
