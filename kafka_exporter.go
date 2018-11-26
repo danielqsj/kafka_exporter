@@ -395,24 +395,31 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 							ch <- prometheus.MustNewConstMetric(
 								consumergroupCurrentOffset, prometheus.GaugeValue, float64(currentOffset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
 							)
-							e.mu.Lock()
-							if offset, ok := offset[topic][partition]; ok {
-								// If the topic is consumed by that consumer group, but no offset associated with the partition
-								// forcing lag to -1 to be able to alert on that
-								var lag int64
-								if offsetFetchResponseBlock.Offset == -1 {
-									lag = -1
-								} else {
-									lag = offset - offsetFetchResponseBlock.Offset
-									lagSum += lag
-								}
-								ch <- prometheus.MustNewConstMetric(
-									consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
-								)
+							// Get newest offset of this topic/partition again to eliminate possible negative lag value.
+							currentOffsetNewest, errOffsetNewest := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
+							if errOffsetNewest != nil {
+								plog.Errorf("Cannot get newest offset of topic %s partition %d: %v", topic, partition, errOffsetNewest)
 							} else {
-								plog.Errorln("No offset of topic %s partition %d, cannot get consumer group lag", topic, partition)
+								e.mu.Lock()
+
+								if currentOffsetNewest != -1 {
+									// If the topic is consumed by that consumer group, but no offset associated with the partition
+									// forcing lag to -1 to be able to alert on that
+									var lag int64
+									if offsetFetchResponseBlock.Offset == -1 {
+										lag = -1
+									} else {
+										lag = currentOffsetNewest - offsetFetchResponseBlock.Offset
+										lagSum += lag
+									}
+									ch <- prometheus.MustNewConstMetric(
+										consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
+									)
+								} else {
+									plog.Errorln("No offset of topic %s partition %d, cannot get consumer group lag", topic, partition)
+								}
+								e.mu.Unlock()
 							}
-							e.mu.Unlock()
 						}
 						ch <- prometheus.MustNewConstMetric(
 							consumergroupCurrentOffsetSum, prometheus.GaugeValue, float64(currentOffsetSum), group.GroupId, topic,
@@ -555,7 +562,7 @@ func main() {
 		"Current Approximate Lag of a ConsumerGroup at Topic/Partition",
 		[]string{"consumergroup", "topic", "partition"}, labels,
 	)
-	
+
 	consumergroupLagZookeeper = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "consumergroupzookeeper", "lag_zookeeper"),
 		"Current Approximate Lag(zookeeper) of a ConsumerGroup at Topic/Partition",
