@@ -206,6 +206,7 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 // as Prometheus metrics. It implements prometheus.Collector.
 func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	var wg = sync.WaitGroup{}
+	var wgGetPartitionGroup = sync.WaitGroup{}
 	ch <- prometheus.MustNewConstMetric(
 		clusterBrokers, prometheus.GaugeValue, float64(len(e.client.Brokers())),
 	)
@@ -235,10 +236,12 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 			e.mu.Lock()
 			offset[topic] = make(map[int32]int64, len(partitions))
 			e.mu.Unlock()
-			for _, partition := range partitions {
+			getPartitionInfo := func(partition int32) {
+				defer wgGetPartitionGroup.Done()
 				broker, err := e.client.Leader(topic, partition)
 				if err != nil {
 					plog.Errorf("Cannot get leader of topic %s partition %d: %v", topic, partition, err)
+					return // if can not find leader, I don't care about other info, you can change this
 				} else {
 					ch <- prometheus.MustNewConstMetric(
 						topicPartitionLeader, prometheus.GaugeValue, float64(broker.ID()), topic, strconv.FormatInt(int64(partition), 10),
@@ -323,6 +326,11 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 					}
 				}
 			}
+			for _, partition := range partitions {
+				wgGetPartitionGroup.Add(1)
+				go getPartitionInfo(partition)
+			}
+			wgGetPartitionGroup.Wait()
 		}
 	}
 
