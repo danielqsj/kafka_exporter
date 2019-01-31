@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
+
 	"github.com/Shopify/sarama"
 	kazoo "github.com/krallistic/kazoo-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -41,19 +43,21 @@ var (
 	consumergroupCurrentOffsetSum      *prometheus.Desc
 	consumergroupLag                   *prometheus.Desc
 	consumergroupLagSum                *prometheus.Desc
-	consumergroupLagZookeeper		   *prometheus.Desc
+	consumergroupLagZookeeper          *prometheus.Desc
 	consumergroupMembers               *prometheus.Desc
 )
 
 // Exporter collects Kafka stats from the given server and exports them using
 // the prometheus metrics package.
 type Exporter struct {
-	client          sarama.Client
-	topicFilter     *regexp.Regexp
-	groupFilter     *regexp.Regexp
-	mu              sync.Mutex
-	useZooKeeperLag bool
-	zookeeperClient *kazoo.Kazoo
+	client                  sarama.Client
+	topicFilter             *regexp.Regexp
+	groupFilter             *regexp.Regexp
+	mu                      sync.Mutex
+	useZooKeeperLag         bool
+	zookeeperClient         *kazoo.Kazoo
+	nextMetadataRefresh     time.Time
+	metadataRefreshInterval time.Duration
 }
 
 type kafkaOpts struct {
@@ -71,6 +75,7 @@ type kafkaOpts struct {
 	useZooKeeperLag          bool
 	uriZookeeper             []string
 	labels                   string
+	metadataRefreshInterval  string
 }
 
 // CanReadCertAndKey returns true if the certificate and key files already exists,
@@ -165,6 +170,14 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		zookeeperClient, err = kazoo.NewKazoo(opts.uriZookeeper, nil)
 	}
 
+	interval, err := time.ParseDuration(opts.metadataRefreshInterval)
+	if err != nil {
+		plog.Errorln("Cannot parse metadata refresh interval")
+		panic(err)
+	}
+
+	config.Metadata.RefreshFrequency = interval
+
 	client, err := sarama.NewClient(opts.uri, config)
 
 	if err != nil {
@@ -175,11 +188,13 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 
 	// Init our exporter.
 	return &Exporter{
-		client:          client,
-		topicFilter:     regexp.MustCompile(topicFilter),
-		groupFilter:     regexp.MustCompile(groupFilter),
-		useZooKeeperLag: opts.useZooKeeperLag,
-		zookeeperClient: zookeeperClient,
+		client:                  client,
+		topicFilter:             regexp.MustCompile(topicFilter),
+		groupFilter:             regexp.MustCompile(groupFilter),
+		useZooKeeperLag:         opts.useZooKeeperLag,
+		zookeeperClient:         zookeeperClient,
+		nextMetadataRefresh:     time.Now(),
+		metadataRefreshInterval: interval,
 	}, nil
 }
 
@@ -212,9 +227,18 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 	offset := make(map[string]map[int32]int64)
 
-	if err := e.client.RefreshMetadata(); err != nil {
-		plog.Errorf("Cannot refresh topics, using cached data: %v", err)
+	now := time.Now()
+
+	if now.After(e.nextMetadataRefresh) {
+		plog.Info("Refreshing client metadata")
+
+		if err := e.client.RefreshMetadata(); err != nil {
+			plog.Errorf("Cannot refresh topics, using cached data: %v", err)
+		}
+
+		e.nextMetadataRefresh = now.Add(e.metadataRefreshInterval)
 	}
+
 	topics, err := e.client.Topics()
 	if err != nil {
 		plog.Errorf("Cannot get topics: %v", err)
@@ -387,7 +411,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 						for partition, offsetFetchResponseBlock := range partitions {
 							err := offsetFetchResponseBlock.Err
 							if err != sarama.ErrNoError {
-								plog.Errorln("Error for  partition %d :%v", partition, err.Error())
+								plog.Errorf("Error for  partition %d :%v", partition, err.Error())
 								continue
 							}
 							currentOffset := offsetFetchResponseBlock.Offset
@@ -410,7 +434,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 									consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
 								)
 							} else {
-								plog.Errorln("No offset of topic %s partition %d, cannot get consumer group lag", topic, partition)
+								plog.Errorf("No offset of topic %s partition %d, cannot get consumer group lag", topic, partition)
 							}
 							e.mu.Unlock()
 						}
@@ -466,6 +490,7 @@ func main() {
 	kingpin.Flag("use.consumelag.zookeeper", "if you need to use a group from zookeeper").Default("false").BoolVar(&opts.useZooKeeperLag)
 	kingpin.Flag("zookeeper.server", "Address (hosts) of zookeeper server.").Default("localhost:2181").StringsVar(&opts.uriZookeeper)
 	kingpin.Flag("kafka.labels", "Kafka cluster name").Default("").StringVar(&opts.labels)
+	kingpin.Flag("refresh.metadata", "Metadata refresh interval").Default("30s").StringVar(&opts.metadataRefreshInterval)
 
 	plog.AddFlags(kingpin.CommandLine)
 	kingpin.Version(version.Print("kafka_exporter"))
@@ -555,7 +580,7 @@ func main() {
 		"Current Approximate Lag of a ConsumerGroup at Topic/Partition",
 		[]string{"consumergroup", "topic", "partition"}, labels,
 	)
-	
+
 	consumergroupLagZookeeper = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "consumergroupzookeeper", "lag_zookeeper"),
 		"Current Approximate Lag(zookeeper) of a ConsumerGroup at Topic/Partition",
