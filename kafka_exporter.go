@@ -255,7 +255,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 	getTopicMetrics := func(topic string) {
 		defer wg.Done()
-		if e.topicFilter.MatchString(topic) || (e.invertTopicFilter && !e.topicFilter.MatchString(topic)) {
+		if (!e.invertTopicFilter && e.topicFilter.MatchString(topic)) || (e.invertTopicFilter && !e.topicFilter.MatchString(topic)) {
 			ch <- prometheus.MustNewConstMetric(topicFiltered, prometheus.GaugeValue, float64(0), topic)
 			partitions, err := e.client.Partitions(topic)
 			if err != nil {
@@ -386,12 +386,12 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		}
 		groupIds := make([]string, 0)
 		for groupId := range groups.Groups {
-			if e.groupFilter.MatchString(groupId) || (e.invertGroupFilter && !e.groupFilter.MatchString(groupId)) {
+			if (!e.invertGroupFilter && e.groupFilter.MatchString(groupId)) || (e.invertGroupFilter && !e.groupFilter.MatchString(groupId)) {
 				groupIds = append(groupIds, groupId)
 			}
 		}
 		ch <- prometheus.MustNewConstMetric(
-			consumergroupsFiltered, prometheus.GaugeValue, float64(len(groups.Groups)-len(groupIds)), string(broker.ID()),
+			consumergroupsFiltered, prometheus.GaugeValue, float64(len(groups.Groups)-len(groupIds)), broker.Addr(),
 		)
 
 		describeGroups, err := broker.DescribeGroups(&sarama.DescribeGroupsRequest{Groups: groupIds})
