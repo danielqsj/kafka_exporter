@@ -227,18 +227,6 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 	offset := make(map[string]map[int32]int64)
 
-	now := time.Now()
-
-	if now.After(e.nextMetadataRefresh) {
-		plog.Info("Refreshing client metadata")
-
-		if err := e.client.RefreshMetadata(); err != nil {
-			plog.Errorf("Cannot refresh topics, using cached data: %v", err)
-		}
-
-		e.nextMetadataRefresh = now.Add(e.metadataRefreshInterval)
-	}
-
 	topics, err := e.client.Topics()
 	if err != nil {
 		plog.Errorf("Cannot get topics: %v", err)
