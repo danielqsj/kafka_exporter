@@ -128,15 +128,16 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		// Convert to lowercase so that SHA512 and SHA256 is still valid
 		opts.saslMechanism = strings.ToLower(opts.saslMechanism)
 		switch opts.saslMechanism {
-		case "sha512":
+		case "scram-sha512":
 			config.Net.SASL.SCRAMClient = &XDGSCRAMClient{HashGeneratorFcn: SHA512}
 			config.Net.SASL.Mechanism = sarama.SASLMechanism(sarama.SASLTypeSCRAMSHA512)
-		case "sha256":
+		case "scram-sha256":
 			config.Net.SASL.SCRAMClient = &XDGSCRAMClient{HashGeneratorFcn: SHA256}
 			config.Net.SASL.Mechanism = sarama.SASLMechanism(sarama.SASLTypeSCRAMSHA256)
+
 		case "plain":
 		default:
-			plog.Fatalf("invalid sasl mechanism \"%s\": can only be \"sha256\", \"sha512\" or \"plain\"", opts.saslMechanism)
+			plog.Fatalf("invalid sasl mechanism \"%s\": can only be \"scram-sha256\", \"scram-sha512\" or \"plain\"", opts.saslMechanism)
 		}
 
 		config.Net.SASL.Enable = true
