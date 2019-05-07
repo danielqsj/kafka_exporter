@@ -104,6 +104,7 @@ This image is configurable using different flags
 | tls.key-file                 |            | The optional key file for client authentication                                                     |
 | tls.insecure-skip-tls-verify | false      | If true, the server's certificate will not be checked for validity                                  |
 | topic.filter                 | .*         | Regex that determines which topics to collect                                                       |
+| topic.exclude                |            | Regex that determines which topics to exclude                                                       |
 | group.filter                 | .*         | Regex that determines which consumer groups to collect                                              |
 | web.listen-address           | :9308      | Address to listen on for web interface and telemetry                                                |
 | web.telemetry-path           | /metrics   | Path under which to expose metrics                                                                  |
