@@ -424,10 +424,10 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 								// If the topic is consumed by that consumer group, but no offset associated with the partition
 								// forcing lag to -1 to be able to alert on that
 								var lag int64
-								if offsetFetchResponseBlock.Offset == -1 {
+								if currentOffset == -1 {
 									lag = -1
 								} else {
-									lag = offset - offsetFetchResponseBlock.Offset
+									lag = offset - currentOffset
 									lagSum += lag
 								}
 								ch <- prometheus.MustNewConstMetric(
