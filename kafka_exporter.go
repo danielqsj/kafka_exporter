@@ -140,12 +140,12 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		config.Net.TLS.Enable = true
 
 		config.Net.TLS.Config = &tls.Config{
-			RootCAs:            x509.NewCertPool(),
 			InsecureSkipVerify: opts.tlsInsecureSkipTLSVerify,
 		}
 
 		if opts.tlsCAFile != "" {
 			if ca, err := ioutil.ReadFile(opts.tlsCAFile); err == nil {
+				config.Net.TLS.Config.RootCAs = x509.NewCertPool()
 				config.Net.TLS.Config.RootCAs.AppendCertsFromPEM(ca)
 			} else {
 				plog.Fatalln(err)
