@@ -15,12 +15,12 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	kazoo "github.com/krallistic/kazoo-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	plog "github.com/prometheus/common/log"
 	"github.com/prometheus/common/version"
 	"github.com/rcrowley/go-metrics"
+	kazoo "github.com/wvanbergen/kazoo-go"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -370,14 +370,14 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 			plog.Errorf("Cannot get consumer group: %v", err)
 			return
 		}
-		groupIds := make([]string, 0)
-		for groupId := range groups.Groups {
-			if e.groupFilter.MatchString(groupId) {
-				groupIds = append(groupIds, groupId)
+		groupIDs := make([]string, 0)
+		for groupID := range groups.Groups {
+			if e.groupFilter.MatchString(groupID) {
+				groupIDs = append(groupIDs, groupID)
 			}
 		}
 
-		describeGroups, err := broker.DescribeGroups(&sarama.DescribeGroupsRequest{Groups: groupIds})
+		describeGroups, err := broker.DescribeGroups(&sarama.DescribeGroupsRequest{Groups: groupIDs})
 		if err != nil {
 			plog.Errorf("Cannot get describe groups: %v", err)
 			return
