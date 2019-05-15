@@ -7,12 +7,10 @@ language: go
 
 go:
 - 1.12
+env:
+- GO111MODULE=on
 
 after_success:
-- if [ "$TRAVIS_PULL_REQUEST" == "false" ]; then
-  make docker;
-  make push;
-  fi
 - if [[ -n "$TRAVIS_TAG" ]]; then
   make crossbuild release;
   fi
