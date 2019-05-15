@@ -411,7 +411,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 						for partition, offsetFetchResponseBlock := range partitions {
 							err := offsetFetchResponseBlock.Err
 							if err != sarama.ErrNoError {
-								plog.Errorf("Error for  partition %d :%v", partition, err.Error())
+								plog.Errorf("Error for partition %d :%v", partition, err.Error())
 								continue
 							}
 							currentOffset := offsetFetchResponseBlock.Offset
