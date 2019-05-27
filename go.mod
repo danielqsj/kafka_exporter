@@ -3,7 +3,7 @@ module github.com/danielqsj/kafka_exporter
 go 1.12
 
 require (
-	github.com/Shopify/sarama v1.22.1-0.20190412022128-c14cccae56fa
+	github.com/Shopify/sarama v1.22.1
 	github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc
 	github.com/alecthomas/units v0.0.0-20151022065526-2efee857e7cf
 	github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973
