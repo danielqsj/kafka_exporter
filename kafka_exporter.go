@@ -62,6 +62,7 @@ type Exporter struct {
 
 type kafkaOpts struct {
 	uri                      []string
+	useSASLOAuth             bool
 	useSASL                  bool
 	useSASLHandshake         bool
 	saslUsername             string
@@ -112,6 +113,15 @@ func canReadFile(path string) bool {
 	return true
 }
 
+//TokenProvider ...
+type TokenProvider struct {
+}
+
+// Token ...
+func (t *TokenProvider) Token() (*sarama.AccessToken, error) {
+	return &sarama.AccessToken{Token: "UU0OinZNCy-L7PiDe_j1xJaUHdMaZ4JdOeUg6_0Uuvs.oYG_E-JfgfgVG7Q6VRH5-vSZd9PGmVv0oTvTxMBl8o4"}, nil
+}
+
 // NewExporter returns an initialized Exporter.
 func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Exporter, error) {
 	var zookeeperClient *kazoo.Kazoo
@@ -134,6 +144,13 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		if opts.saslPassword != "" {
 			config.Net.SASL.Password = opts.saslPassword
 		}
+	}
+
+	if opts.useSASLOAuth {
+		config.Net.SASL.Enable = true
+		config.Net.SASL.Mechanism = sarama.SASLTypeOAuth
+		config.Net.SASL.TokenProvider = &TokenProvider{}
+
 	}
 
 	if opts.useTLS {
@@ -477,6 +494,7 @@ func main() {
 		opts = kafkaOpts{}
 	)
 	kingpin.Flag("kafka.server", "Address (host:port) of Kafka server.").Default("kafka:9092").StringsVar(&opts.uri)
+	kingpin.Flag("sasl.oauth.enabled", "Connect using SASL/OAUTHBEARER.").Default("true").BoolVar(&opts.useSASLOAuth)
 	kingpin.Flag("sasl.enabled", "Connect using SASL/PLAIN.").Default("false").BoolVar(&opts.useSASL)
 	kingpin.Flag("sasl.handshake", "Only set this to false if using a non-Kafka SASL proxy.").Default("true").BoolVar(&opts.useSASLHandshake)
 	kingpin.Flag("sasl.username", "SASL user name.").Default("").StringVar(&opts.saslUsername)
