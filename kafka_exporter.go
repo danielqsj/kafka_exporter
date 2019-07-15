@@ -15,7 +15,6 @@ import (
 	"sync"
 	"time"
 
-	b64 "encoding/base64"
 	"encoding/json"
 
 	"github.com/Shopify/sarama"
@@ -141,8 +140,6 @@ type TokenProvider struct {
 // Token is implementation of interface TokenProvider
 func (t *TokenProvider) Token() (*sarama.AccessToken, error) {
 	if time.Now().Sub(tokenExpiredTime) > 0 {
-		clientCredential := saslOAuthClientID + ":" + saslOAuthClientSecret
-		basicAuthN := "Basic " + b64.StdEncoding.EncodeToString([]byte(clientCredential))
 
 		form := url.Values{}
 		form.Add("grant_type", "client_credentials")
@@ -152,26 +149,30 @@ func (t *TokenProvider) Token() (*sarama.AccessToken, error) {
 		req, err := http.NewRequest("POST", saslOAuthTokenEndpoint, strings.NewReader(form.Encode()))
 
 		// add authorization header to the req
-		req.Header.Add("Authorization", basicAuthN)
+		req.SetBasicAuth(saslOAuthClientID, saslOAuthClientSecret)
 		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 
 		// Send req using http Client
 		client := &http.Client{}
 		resp, err := client.Do(req)
 		if err != nil {
-			log.Println("Error on response.\n[ERRO] -", err)
+			plog.Errorln("Error on response.")
+			panic(err)
 		}
 
 		body, _ := ioutil.ReadAll(resp.Body)
-		result := new(TokenResp)
 
+		plog.Infoln("Token Response", string([]byte(body)))
+
+		result := new(TokenResp)
 		errDes := json.Unmarshal([]byte(body), result)
 		if errDes != nil {
-			log.Println("Error on deserializing json.\n[ERRO] -", errDes)
+			plog.Errorln("Error on deserializing json.")
+			panic(err)
 		}
 
 		curAccessToken = result.AccessToken
-		tokenExpiredTime = time.Now().Add(time.Second * time.Duration(result.ExpiresIn))
+		tokenExpiredTime = time.Now().Add(time.Second * time.Duration(result.ExpiresIn-10))
 	}
 
 	return &sarama.AccessToken{Token: curAccessToken}, nil
