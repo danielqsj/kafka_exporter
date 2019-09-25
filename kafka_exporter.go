@@ -50,32 +50,36 @@ var (
 // Exporter collects Kafka stats from the given server and exports them using
 // the prometheus metrics package.
 type Exporter struct {
-	client                  sarama.Client
-	topicFilter             *regexp.Regexp
-	groupFilter             *regexp.Regexp
-	mu                      sync.Mutex
-	useZooKeeperLag         bool
-	zookeeperClient         *kazoo.Kazoo
-	nextMetadataRefresh     time.Time
-	metadataRefreshInterval time.Duration
+	client                     sarama.Client
+	topicFilter                *regexp.Regexp
+	groupFilter                *regexp.Regexp
+	mu                         sync.Mutex
+	useZooKeeperLag            bool
+	zookeeperClient            *kazoo.Kazoo
+	nextMetadataRefresh        time.Time
+	metadataRefreshInterval    time.Duration
+	suppressTopicMetrics       bool
+	suppressConsumerPartitions bool
 }
 
 type kafkaOpts struct {
-	uri                      []string
-	useSASL                  bool
-	useSASLHandshake         bool
-	saslUsername             string
-	saslPassword             string
-	useTLS                   bool
-	tlsCAFile                string
-	tlsCertFile              string
-	tlsKeyFile               string
-	tlsInsecureSkipTLSVerify bool
-	kafkaVersion             string
-	useZooKeeperLag          bool
-	uriZookeeper             []string
-	labels                   string
-	metadataRefreshInterval  string
+	uri                        []string
+	useSASL                    bool
+	useSASLHandshake           bool
+	saslUsername               string
+	saslPassword               string
+	useTLS                     bool
+	tlsCAFile                  string
+	tlsCertFile                string
+	tlsKeyFile                 string
+	tlsInsecureSkipTLSVerify   bool
+	kafkaVersion               string
+	useZooKeeperLag            bool
+	uriZookeeper               []string
+	labels                     string
+	metadataRefreshInterval    string
+	suppressTopicMetrics       bool
+	suppressConsumerPartitions bool
 }
 
 // CanReadCertAndKey returns true if the certificate and key files already exists,
@@ -188,13 +192,15 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 
 	// Init our exporter.
 	return &Exporter{
-		client:                  client,
-		topicFilter:             regexp.MustCompile(topicFilter),
-		groupFilter:             regexp.MustCompile(groupFilter),
-		useZooKeeperLag:         opts.useZooKeeperLag,
-		zookeeperClient:         zookeeperClient,
-		nextMetadataRefresh:     time.Now(),
-		metadataRefreshInterval: interval,
+		client:                     client,
+		topicFilter:                regexp.MustCompile(topicFilter),
+		groupFilter:                regexp.MustCompile(groupFilter),
+		useZooKeeperLag:            opts.useZooKeeperLag,
+		zookeeperClient:            zookeeperClient,
+		nextMetadataRefresh:        time.Now(),
+		metadataRefreshInterval:    interval,
+		suppressTopicMetrics:       opts.suppressTopicMetrics,
+		suppressConsumerPartitions: opts.suppressConsumerPartitions,
 	}, nil
 }
 
@@ -253,21 +259,16 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 				plog.Errorf("Cannot get partitions of topic %s: %v", topic, err)
 				return
 			}
-			ch <- prometheus.MustNewConstMetric(
-				topicPartitions, prometheus.GaugeValue, float64(len(partitions)), topic,
-			)
+			if !e.suppressTopicMetrics {
+				ch <- prometheus.MustNewConstMetric(
+					topicPartitions, prometheus.GaugeValue, float64(len(partitions)), topic,
+				)
+			}
 			e.mu.Lock()
 			offset[topic] = make(map[int32]int64, len(partitions))
 			e.mu.Unlock()
 			for _, partition := range partitions {
 				broker, err := e.client.Leader(topic, partition)
-				if err != nil {
-					plog.Errorf("Cannot get leader of topic %s partition %d: %v", topic, partition, err)
-				} else {
-					ch <- prometheus.MustNewConstMetric(
-						topicPartitionLeader, prometheus.GaugeValue, float64(broker.ID()), topic, strconv.FormatInt(int64(partition), 10),
-					)
-				}
 
 				currentOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
 				if err != nil {
@@ -276,56 +277,68 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 					e.mu.Lock()
 					offset[topic][partition] = currentOffset
 					e.mu.Unlock()
-					ch <- prometheus.MustNewConstMetric(
-						topicCurrentOffset, prometheus.GaugeValue, float64(currentOffset), topic, strconv.FormatInt(int64(partition), 10),
-					)
+					if !e.suppressTopicMetrics {
+						ch <- prometheus.MustNewConstMetric(
+							topicCurrentOffset, prometheus.GaugeValue, float64(currentOffset), topic, strconv.FormatInt(int64(partition), 10),
+						)
+					}
 				}
 
-				oldestOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetOldest)
-				if err != nil {
-					plog.Errorf("Cannot get oldest offset of topic %s partition %d: %v", topic, partition, err)
-				} else {
-					ch <- prometheus.MustNewConstMetric(
-						topicOldestOffset, prometheus.GaugeValue, float64(oldestOffset), topic, strconv.FormatInt(int64(partition), 10),
-					)
-				}
+				if !e.suppressTopicMetrics {
+					if err != nil {
+						plog.Errorf("Cannot get leader of topic %s partition %d: %v", topic, partition, err)
+					} else {
+						ch <- prometheus.MustNewConstMetric(
+							topicPartitionLeader, prometheus.GaugeValue, float64(broker.ID()), topic, strconv.FormatInt(int64(partition), 10),
+						)
+					}
 
-				replicas, err := e.client.Replicas(topic, partition)
-				if err != nil {
-					plog.Errorf("Cannot get replicas of topic %s partition %d: %v", topic, partition, err)
-				} else {
-					ch <- prometheus.MustNewConstMetric(
-						topicPartitionReplicas, prometheus.GaugeValue, float64(len(replicas)), topic, strconv.FormatInt(int64(partition), 10),
-					)
-				}
+					oldestOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetOldest)
+					if err != nil {
+						plog.Errorf("Cannot get oldest offset of topic %s partition %d: %v", topic, partition, err)
+					} else {
+						ch <- prometheus.MustNewConstMetric(
+							topicOldestOffset, prometheus.GaugeValue, float64(oldestOffset), topic, strconv.FormatInt(int64(partition), 10),
+						)
+					}
 
-				inSyncReplicas, err := e.client.InSyncReplicas(topic, partition)
-				if err != nil {
-					plog.Errorf("Cannot get in-sync replicas of topic %s partition %d: %v", topic, partition, err)
-				} else {
-					ch <- prometheus.MustNewConstMetric(
-						topicPartitionInSyncReplicas, prometheus.GaugeValue, float64(len(inSyncReplicas)), topic, strconv.FormatInt(int64(partition), 10),
-					)
-				}
+					replicas, err := e.client.Replicas(topic, partition)
+					if err != nil {
+						plog.Errorf("Cannot get replicas of topic %s partition %d: %v", topic, partition, err)
+					} else {
+						ch <- prometheus.MustNewConstMetric(
+							topicPartitionReplicas, prometheus.GaugeValue, float64(len(replicas)), topic, strconv.FormatInt(int64(partition), 10),
+						)
+					}
 
-				if broker != nil && replicas != nil && len(replicas) > 0 && broker.ID() == replicas[0] {
-					ch <- prometheus.MustNewConstMetric(
-						topicPartitionUsesPreferredReplica, prometheus.GaugeValue, float64(1), topic, strconv.FormatInt(int64(partition), 10),
-					)
-				} else {
-					ch <- prometheus.MustNewConstMetric(
-						topicPartitionUsesPreferredReplica, prometheus.GaugeValue, float64(0), topic, strconv.FormatInt(int64(partition), 10),
-					)
-				}
+					inSyncReplicas, err := e.client.InSyncReplicas(topic, partition)
+					if err != nil {
+						plog.Errorf("Cannot get in-sync replicas of topic %s partition %d: %v", topic, partition, err)
+					} else {
+						ch <- prometheus.MustNewConstMetric(
+							topicPartitionInSyncReplicas, prometheus.GaugeValue, float64(len(inSyncReplicas)), topic, strconv.FormatInt(int64(partition), 10),
+						)
+					}
 
-				if replicas != nil && inSyncReplicas != nil && len(inSyncReplicas) < len(replicas) {
-					ch <- prometheus.MustNewConstMetric(
-						topicUnderReplicatedPartition, prometheus.GaugeValue, float64(1), topic, strconv.FormatInt(int64(partition), 10),
-					)
-				} else {
-					ch <- prometheus.MustNewConstMetric(
-						topicUnderReplicatedPartition, prometheus.GaugeValue, float64(0), topic, strconv.FormatInt(int64(partition), 10),
-					)
+					if broker != nil && replicas != nil && len(replicas) > 0 && broker.ID() == replicas[0] {
+						ch <- prometheus.MustNewConstMetric(
+							topicPartitionUsesPreferredReplica, prometheus.GaugeValue, float64(1), topic, strconv.FormatInt(int64(partition), 10),
+						)
+					} else {
+						ch <- prometheus.MustNewConstMetric(
+							topicPartitionUsesPreferredReplica, prometheus.GaugeValue, float64(0), topic, strconv.FormatInt(int64(partition), 10),
+						)
+					}
+
+					if replicas != nil && inSyncReplicas != nil && len(inSyncReplicas) < len(replicas) {
+						ch <- prometheus.MustNewConstMetric(
+							topicUnderReplicatedPartition, prometheus.GaugeValue, float64(1), topic, strconv.FormatInt(int64(partition), 10),
+						)
+					} else {
+						ch <- prometheus.MustNewConstMetric(
+							topicUnderReplicatedPartition, prometheus.GaugeValue, float64(0), topic, strconv.FormatInt(int64(partition), 10),
+						)
+					}
 				}
 
 				if e.useZooKeeperLag {
@@ -345,6 +358,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 							)
 						}
 					}
+
 				}
 			}
 		}
@@ -416,9 +430,12 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 							}
 							currentOffset := offsetFetchResponseBlock.Offset
 							currentOffsetSum += currentOffset
-							ch <- prometheus.MustNewConstMetric(
-								consumergroupCurrentOffset, prometheus.GaugeValue, float64(currentOffset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
-							)
+
+							if !e.suppressConsumerPartitions {
+								ch <- prometheus.MustNewConstMetric(
+									consumergroupCurrentOffset, prometheus.GaugeValue, float64(currentOffset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
+								)
+							}
 							e.mu.Lock()
 							if offset, ok := offset[topic][partition]; ok {
 								// If the topic is consumed by that consumer group, but no offset associated with the partition
@@ -430,9 +447,12 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 									lag = offset - offsetFetchResponseBlock.Offset
 									lagSum += lag
 								}
-								ch <- prometheus.MustNewConstMetric(
-									consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
-								)
+
+								if !e.suppressConsumerPartitions {
+									ch <- prometheus.MustNewConstMetric(
+										consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
+									)
+								}
 							} else {
 								plog.Errorf("No offset of topic %s partition %d, cannot get consumer group lag", topic, partition)
 							}
@@ -491,6 +511,8 @@ func main() {
 	kingpin.Flag("zookeeper.server", "Address (hosts) of zookeeper server.").Default("localhost:2181").StringsVar(&opts.uriZookeeper)
 	kingpin.Flag("kafka.labels", "Kafka cluster name").Default("").StringVar(&opts.labels)
 	kingpin.Flag("refresh.metadata", "Metadata refresh interval").Default("30s").StringVar(&opts.metadataRefreshInterval)
+	kingpin.Flag("suppress.topic-metrics", "if you want topic metrics").Default("false").BoolVar(&opts.suppressTopicMetrics)
+	kingpin.Flag("suppress.consumer-partitions", "if you want consumer partition metrics").Default("false").BoolVar(&opts.suppressConsumerPartitions)
 
 	plog.AddFlags(kingpin.CommandLine)
 	kingpin.Version(version.Print("kafka_exporter"))
