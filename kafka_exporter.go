@@ -474,7 +474,7 @@ func main() {
 		metricsPath   = kingpin.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
 		topicFilter   = kingpin.Flag("topic.filter", "Regex that determines which topics to collect.").Default(".*").String()
 		groupFilter   = kingpin.Flag("group.filter", "Regex that determines which consumer groups to collect.").Default(".*").String()
-		groupExclude  = kingpin.Flag("group.exclude", "Regex that determines which consumer groups to exclude.").Default("").String()
+		groupExclude  = kingpin.Flag("group.exclude", "Regex that determines which consumer groups to exclude.").Default("^$").String()
 		logSarama     = kingpin.Flag("log.enable-sarama", "Turn on Sarama logging.").Default("false").Bool()
 
 		opts = kafkaOpts{}
