@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kafka-exporter.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "kafka-exporter.name" . }}
+    helm.sh/chart: {{ include "kafka-exporter.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "kafka-exporter.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "kafka-exporter.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            {{- if .Values.kafkaExporter}}
+            {{- range .Values.kafkaExporter.kafka.servers }}
+            - "--kafka.server={{ . }}"
+            {{- end }}
+            {{- if .Values.kafkaExporter.kafka.version }}
+            - --kafka.version={{ .Values.kafkaExporter.kafka.version }}
+            {{- end }}
+            {{- end}}
+            {{- if .Values.kafkaExporter.sasl.enabled }}
+            - --sasl.enabled
+            {{- if not .Values.kafkaExporter.sasl.handshake }}
+            - --sasl.handshake=false
+            {{- end }}
+            - --sasl.username={{ .Values.kafkaExporter.sasl.username }}
+            - --sasl.password={{ .Values.kafkaExporter.sasl.password }}
+            {{- end }}
+            {{- if .Values.kafkaExporter.tls.enabled}}
+            - --tls.enabled
+            - --tls.ca-file=/etc/tls-certs/ca-file
+            - --tls.cert-file=/etc/tls-certs/cert-file
+            - --tls.key-file=/etc/tls-certs/key-file
+            {{- end }}
+            {{- if .Values.kafkaExporter.log }}
+            - --log.level={{ .Values.kafkaExporter.log.level }}
+            {{- if .Values.kafkaExporter.log.enableSarama }}
+            - --log.enable-sarama
+            {{- end }}
+            {{- end }}
+          ports:
+            - name: metrics
+              containerPort: 9308
+              protocol: TCP
+          {{- if .Values.kafkaExporter.tls.enabled }}
+          volumeMounts:
+          - name: tls-certs
+            mountPath: "/etc/tls-certs/"
+            readOnly: true
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- if .Values.kafkaExporter.tls.enabled }}
+      volumes:
+      - name: tls-certs
+        secret:
+          secretName: {{ include "kafka-exporter.fullname" . }}
+    {{- end }}
