@@ -1,0 +1,5 @@
+1.To see the metrics
+{{- if contains "ClusterIP" .Values.service.type }}
+  kubectl port-forward svc/{{ include "kafka-exporter.fullname" . }} {{ .Values.service.port }}
+  echo "Visit http://127.0.0.1:{{ .Values.service.port }} to use your application"
+{{- end }}
