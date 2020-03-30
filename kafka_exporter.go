@@ -58,6 +58,11 @@ type Exporter struct {
 	zookeeperClient         *kazoo.Kazoo
 	nextMetadataRefresh     time.Time
 	metadataRefreshInterval time.Duration
+	allowConcurrent         bool
+	sgMutex                 sync.Mutex
+	sgWait                  sync.WaitGroup
+	sgChans                 []chan<- prometheus.Metric
+	consumerGroupFetchAll   bool
 }
 
 type kafkaOpts struct {
@@ -77,6 +82,7 @@ type kafkaOpts struct {
 	uriZookeeper             []string
 	labels                   string
 	metadataRefreshInterval  string
+	allowConcurrent          bool
 }
 
 // CanReadCertAndKey returns true if the certificate and key files already exists,
@@ -211,7 +217,24 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		zookeeperClient:         zookeeperClient,
 		nextMetadataRefresh:     time.Now(),
 		metadataRefreshInterval: interval,
+		allowConcurrent:         opts.allowConcurrent,
+		sgMutex:                 sync.Mutex{},
+		sgWait:                  sync.WaitGroup{},
+		sgChans:                 []chan<- prometheus.Metric{},
+		consumerGroupFetchAll:   config.Version.IsAtLeast(sarama.V2_0_0_0),
 	}, nil
+}
+
+func (e *Exporter) fetchOffsetVersion() int16 {
+	version := e.client.Config().Version
+	if e.client.Config().Version.IsAtLeast(sarama.V2_0_0_0) {
+		return 4
+	} else if version.IsAtLeast(sarama.V0_10_2_0) {
+		return 2
+	} else if version.IsAtLeast(sarama.V0_8_2_2) {
+		return 1
+	}
+	return 0
 }
 
 // Describe describes all the metrics ever exported by the Kafka exporter. It
@@ -233,9 +256,53 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- consumergroupLagSum
 }
 
+func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
+	if e.allowConcurrent {
+		e.collect(ch)
+		return
+	}
+	// Locking to avoid race add
+	e.sgMutex.Lock()
+	e.sgChans = append(e.sgChans, ch)
+	// Safe to compare lenght since we own the Lock
+	if len(e.sgChans) == 1 {
+		e.sgWait.Add(1)
+		go e.collectChans()
+	}
+	e.sgMutex.Unlock()
+	// Released lock, we have insurance that our chan will be part of the collectChan slice
+	e.sgWait.Wait()
+	// collectChan finished
+}
+
 // Collect fetches the stats from configured Kafka location and delivers them
 // as Prometheus metrics. It implements prometheus.Collector.
-func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
+func (e *Exporter) collectChans() {
+	original := make(chan prometheus.Metric)
+	container := make([]prometheus.Metric, 0, 100)
+	go func() {
+		for metric := range original {
+			container = append(container, metric)
+		}
+	}()
+	e.collect(original)
+	close(original)
+	// Lock to avoid modification on the channel slice
+	e.sgMutex.Lock()
+	for _, ch := range e.sgChans {
+		for _, metric := range container {
+			ch <- metric
+		}
+	}
+	// Reset the slice
+	e.sgChans = e.sgChans[:0]
+	// Notify remaining waiting Collect they can return
+	e.sgWait.Done()
+	// Release the lock so Collect can append to the slice again
+	e.sgMutex.Unlock()
+}
+
+func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	var wg = sync.WaitGroup{}
 	ch <- prometheus.MustNewConstMetric(
 		clusterBrokers, prometheus.GaugeValue, float64(len(e.client.Brokers())),
@@ -263,6 +330,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 	getTopicMetrics := func(topic string) {
 		defer wg.Done()
+		plog.Debugf("Fetching metrics for \"%s\"", topic)
 		if e.topicFilter.MatchString(topic) {
 			partitions, err := e.client.Partitions(topic)
 			if err != nil {
@@ -366,6 +434,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		}
 	}
 
+	plog.Info("Fetching topic metrics")
 	for _, topic := range topics {
 		wg.Add(1)
 		go getTopicMetrics(topic)
@@ -375,12 +444,14 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 	getConsumerGroupMetrics := func(broker *sarama.Broker) {
 		defer wg.Done()
+		plog.Debugf("[%d] Fetching consumer group metrics", broker.ID())
 		if err := broker.Open(e.client.Config()); err != nil && err != sarama.ErrAlreadyConnected {
 			plog.Errorf("Cannot connect to broker %d: %v", broker.ID(), err)
 			return
 		}
 		defer broker.Close()
 
+		plog.Debugf("[%d]> listing groups", broker.ID())
 		groups, err := broker.ListGroups(&sarama.ListGroupsRequest{})
 		if err != nil {
 			plog.Errorf("Cannot get consumer group: %v", err)
@@ -392,26 +463,34 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 				groupIds = append(groupIds, groupId)
 			}
 		}
-
+		plog.Debugf("[%d]> describing groups", broker.ID())
 		describeGroups, err := broker.DescribeGroups(&sarama.DescribeGroupsRequest{Groups: groupIds})
 		if err != nil {
 			plog.Errorf("Cannot get describe groups: %v", err)
 			return
 		}
 		for _, group := range describeGroups.Groups {
-			offsetFetchRequest := sarama.OffsetFetchRequest{ConsumerGroup: group.GroupId, Version: 1}
-			for topic, partitions := range offset {
-				for partition := range partitions {
-					offsetFetchRequest.AddPartition(topic, partition)
+			offsetFetchRequest := sarama.OffsetFetchRequest{ConsumerGroup: group.GroupId, Version: e.fetchOffsetVersion()}
+			if !e.consumerGroupFetchAll {
+				for topic, partitions := range offset {
+					for partition := range partitions {
+						offsetFetchRequest.AddPartition(topic, partition)
+					}
 				}
 			}
 			ch <- prometheus.MustNewConstMetric(
 				consumergroupMembers, prometheus.GaugeValue, float64(len(group.Members)), group.GroupId,
 			)
+			start := time.Now()
+			plog.Debugf("[%d][%s]> fetching group offsets", broker.ID(), group.GroupId)
 			if offsetFetchResponse, err := broker.FetchOffset(&offsetFetchRequest); err != nil {
 				plog.Errorf("Cannot get offset of group %s: %v", group.GroupId, err)
 			} else {
+				plog.Debugf("[%d][%s] done fetching group offset in %s", broker.ID(), group.GroupId, time.Since(start).String())
 				for topic, partitions := range offsetFetchResponse.Blocks {
+					if !e.topicFilter.MatchString(topic) {
+						continue
+					}
 					// If the topic is not consumed by that consumer group, skip it
 					topicConsumed := false
 					for _, offsetFetchResponseBlock := range partitions {
@@ -466,6 +545,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		}
 	}
 
+	plog.Info("Fetching consumer group metrics")
 	if len(e.client.Brokers()) > 0 {
 		for _, broker := range e.client.Brokers() {
 			wg.Add(1)
@@ -503,11 +583,12 @@ func main() {
 	kingpin.Flag("tls.cert-file", "The optional certificate file for client authentication.").Default("").StringVar(&opts.tlsCertFile)
 	kingpin.Flag("tls.key-file", "The optional key file for client authentication.").Default("").StringVar(&opts.tlsKeyFile)
 	kingpin.Flag("tls.insecure-skip-tls-verify", "If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure.").Default("false").BoolVar(&opts.tlsInsecureSkipTLSVerify)
-	kingpin.Flag("kafka.version", "Kafka broker version").Default(sarama.V1_0_0_0.String()).StringVar(&opts.kafkaVersion)
+	kingpin.Flag("kafka.version", "Kafka broker version").Default(sarama.V2_0_0_0.String()).StringVar(&opts.kafkaVersion)
 	kingpin.Flag("use.consumelag.zookeeper", "if you need to use a group from zookeeper").Default("false").BoolVar(&opts.useZooKeeperLag)
 	kingpin.Flag("zookeeper.server", "Address (hosts) of zookeeper server.").Default("localhost:2181").StringsVar(&opts.uriZookeeper)
 	kingpin.Flag("kafka.labels", "Kafka cluster name").Default("").StringVar(&opts.labels)
-	kingpin.Flag("refresh.metadata", "Metadata refresh interval").Default("30s").StringVar(&opts.metadataRefreshInterval)
+	kingpin.Flag("refresh.metadata", "Metadata refresh interval").Default("1m").StringVar(&opts.metadataRefreshInterval)
+	kingpin.Flag("concurrent.enable", "If true, all scrapes will trigger kafka operations otherwise, they will share results. WARN: This should be disabled on large clusters").Default("false").BoolVar(&opts.allowConcurrent)
 
 	plog.AddFlags(kingpin.CommandLine)
 	kingpin.Version(version.Print("kafka_exporter"))
