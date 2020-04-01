@@ -268,6 +268,8 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	if len(e.sgChans) == 1 {
 		e.sgWaitCh = make(chan struct{})
 		go e.collectChans(e.sgWaitCh)
+	} else {
+		plog.Info("concurrent calls detected, waiting for first to finish")
 	}
 	// Put in another variable to ensure not overwriting it in another Collect once we wait
 	waiter := e.sgWaitCh
