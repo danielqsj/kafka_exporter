@@ -60,7 +60,7 @@ type Exporter struct {
 	metadataRefreshInterval time.Duration
 	allowConcurrent         bool
 	sgMutex                 sync.Mutex
-	sgWait                  sync.WaitGroup
+	sgWaitCh                chan struct{}
 	sgChans                 []chan<- prometheus.Metric
 	consumerGroupFetchAll   bool
 }
@@ -219,7 +219,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		metadataRefreshInterval: interval,
 		allowConcurrent:         opts.allowConcurrent,
 		sgMutex:                 sync.Mutex{},
-		sgWait:                  sync.WaitGroup{},
+		sgWaitCh:                nil,
 		sgChans:                 []chan<- prometheus.Metric{},
 		consumerGroupFetchAll:   config.Version.IsAtLeast(sarama.V2_0_0_0),
 	}, nil
@@ -266,18 +266,20 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	e.sgChans = append(e.sgChans, ch)
 	// Safe to compare lenght since we own the Lock
 	if len(e.sgChans) == 1 {
-		e.sgWait.Add(1)
-		go e.collectChans()
+		e.sgWaitCh = make(chan struct{})
+		go e.collectChans(e.sgWaitCh)
 	}
+	// Put in another variable to ensure not overwriting it in another Collect once we wait
+	waiter := e.sgWaitCh
 	e.sgMutex.Unlock()
 	// Released lock, we have insurance that our chan will be part of the collectChan slice
-	e.sgWait.Wait()
+	<-waiter
 	// collectChan finished
 }
 
 // Collect fetches the stats from configured Kafka location and delivers them
 // as Prometheus metrics. It implements prometheus.Collector.
-func (e *Exporter) collectChans() {
+func (e *Exporter) collectChans(quit chan struct{}) {
 	original := make(chan prometheus.Metric)
 	container := make([]prometheus.Metric, 0, 100)
 	go func() {
@@ -297,7 +299,7 @@ func (e *Exporter) collectChans() {
 	// Reset the slice
 	e.sgChans = e.sgChans[:0]
 	// Notify remaining waiting Collect they can return
-	e.sgWait.Done()
+	close(quit)
 	// Release the lock so Collect can append to the slice again
 	e.sgMutex.Unlock()
 }
