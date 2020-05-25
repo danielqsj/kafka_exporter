@@ -264,6 +264,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	getTopicMetrics := func(topic string) {
 		defer wg.Done()
 		if e.topicFilter.MatchString(topic) {
+			plog.Debugf("Get topic %s", topic)
 			partitions, err := e.client.Partitions(topic)
 			if err != nil {
 				plog.Errorf("Cannot get partitions of topic %s: %v", topic, err)
@@ -373,6 +374,8 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 	wg.Wait()
 
+	plog.Debugln("Get topic metrics done")
+
 	getConsumerGroupMetrics := func(broker *sarama.Broker) {
 		defer wg.Done()
 		if err := broker.Open(e.client.Config()); err != nil && err != sarama.ErrAlreadyConnected {
@@ -393,6 +396,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 			}
 		}
 
+		plog.Debugf("BrokerId :%d, GroupIds : %#v", broker.ID(), groupIds)
 		describeGroups, err := broker.DescribeGroups(&sarama.DescribeGroupsRequest{Groups: groupIds})
 		if err != nil {
 			plog.Errorf("Cannot get describe groups: %v", err)
@@ -405,8 +409,9 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 					offsetFetchRequest.AddPartition(topic, partition)
 				}
 			}
+			plog.Debugf("Set metric consumergroupMembers: BrokerId :%d, Group.Members len:%d,  GroupId: %s", broker.ID(), len(group.Members), group.GroupId)
 			ch <- prometheus.MustNewConstMetric(
-				consumergroupMembers, prometheus.GaugeValue, float64(len(group.Members)), group.GroupId,
+				consumergroupMembers, prometheus.GaugeValue, float64(len(group.Members)), fmt.Sprintf("%s-%d", group.GroupId, broker.ID()),
 			)
 			if offsetFetchResponse, err := broker.FetchOffset(&offsetFetchRequest); err != nil {
 				plog.Errorf("Cannot get offset of group %s: %v", group.GroupId, err)
@@ -433,7 +438,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 							currentOffset := offsetFetchResponseBlock.Offset
 							currentOffsetSum += currentOffset
 							ch <- prometheus.MustNewConstMetric(
-								consumergroupCurrentOffset, prometheus.GaugeValue, float64(currentOffset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
+								consumergroupCurrentOffset, prometheus.GaugeValue, float64(currentOffset), fmt.Sprintf("%s-%d", group.GroupId, broker.ID()), topic, strconv.FormatInt(int64(partition), 10),
 							)
 							e.mu.Lock()
 							if offset, ok := offset[topic][partition]; ok {
@@ -447,7 +452,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 									lagSum += lag
 								}
 								ch <- prometheus.MustNewConstMetric(
-									consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
+									consumergroupLag, prometheus.GaugeValue, float64(lag), fmt.Sprintf("%s-%d", group.GroupId, broker.ID()), topic, strconv.FormatInt(int64(partition), 10),
 								)
 							} else {
 								plog.Errorf("No offset of topic %s partition %d, cannot get consumer group lag", topic, partition)
@@ -455,10 +460,10 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 							e.mu.Unlock()
 						}
 						ch <- prometheus.MustNewConstMetric(
-							consumergroupCurrentOffsetSum, prometheus.GaugeValue, float64(currentOffsetSum), group.GroupId, topic,
+							consumergroupCurrentOffsetSum, prometheus.GaugeValue, float64(currentOffsetSum), fmt.Sprintf("%s-%d", group.GroupId, broker.ID()), topic,
 						)
 						ch <- prometheus.MustNewConstMetric(
-							consumergroupLagSum, prometheus.GaugeValue, float64(lagSum), group.GroupId, topic,
+							consumergroupLagSum, prometheus.GaugeValue, float64(lagSum), fmt.Sprintf("%s-%d", group.GroupId, broker.ID()), topic,
 						)
 					}
 				}
@@ -467,6 +472,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	if len(e.client.Brokers()) > 0 {
+		plog.Debugf("Brokers: %d", len(e.client.Brokers()))
 		for _, broker := range e.client.Brokers() {
 			wg.Add(1)
 			go getConsumerGroupMetrics(broker)
@@ -475,6 +481,8 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	} else {
 		plog.Errorln("No valid broker, cannot get consumer group metrics")
 	}
+
+	plog.Debugln("Get metrics done")
 }
 
 func init() {
