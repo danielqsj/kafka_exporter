@@ -4,7 +4,7 @@ MAINTAINER  Daniel Qian <qsj.daniel@gmail.com>
 WORKDIR /go/src/app
 COPY . .
 
-RUN go build -x -v
+RUN go build
 
 EXPOSE     9308
 ENTRYPOINT [ "./kafka_exporter" ]
