@@ -1,7 +1,12 @@
-FROM        quay.io/prometheus/busybox:latest
+FROM golang:1.14
 MAINTAINER  Daniel Qian <qsj.daniel@gmail.com>
 
-COPY kafka_exporter /bin/kafka_exporter
+WORKDIR /go/src/app
+COPY . .
+
+RUN go mod download
+RUN go mod verify
+RUN go build
 
 EXPOSE     9308
-ENTRYPOINT [ "/bin/kafka_exporter" ]
+ENTRYPOINT [ "./kafka_exporter" ]

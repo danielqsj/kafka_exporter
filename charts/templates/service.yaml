@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "kafka-exporter.fullname" . }}
+  labels:
+    app: {{ template "kafka-exporter.name" . }}
+    chart: {{ template "kafka-exporter.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: exporter-port
+      protocol: TCP
+      name: kafka-exporter
+  selector:
+    app: {{ template "kafka-exporter.name" . }}
+    release: {{ .Release.Name }}
