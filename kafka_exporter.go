@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -71,12 +72,62 @@ type kafkaOpts struct {
 	tlsCAFile                string
 	tlsCertFile              string
 	tlsKeyFile               string
+	tlsKeyPassword           string
 	tlsInsecureSkipTLSVerify bool
 	kafkaVersion             string
 	useZooKeeperLag          bool
 	uriZookeeper             []string
 	labels                   string
 	metadataRefreshInterval  string
+}
+
+// loadTlsCertWithPassword is a helper function for loading a kafka client's private key / cert when the key is encrypted with a password
+func loadTlsCertWithPassword(certPath, keyPath, password string) (tls.Certificate, error) {
+	var cert tls.Certificate
+
+	// Read the cert in
+	certIn, err := ioutil.ReadFile(certPath)
+	if err != nil {
+		return cert, fmt.Errorf("failed to read kafka client cert: %s", err)
+	}
+
+	// Read & decode the encrypted key file with the pass to make tls work
+	keyIn, err := ioutil.ReadFile(keyPath)
+	if err != nil {
+		return cert, fmt.Errorf("failed to read kafka client key: %s", err)
+	}
+
+	// Decode and decrypt our PEM block as DER
+	decodedPEM, _ := pem.Decode([]byte(keyIn))
+	if decodedPEM == nil {
+		return cert, fmt.Errorf("failed to decode pem block from client key '%s'", keyPath)
+	}
+	decrypedPemBlock, err := x509.DecryptPEMBlock(decodedPEM, []byte(password))
+	if err != nil {
+		return cert, fmt.Errorf("failed to decrypt pem block: %s", err)
+	}
+
+	// Parse the DER encoded block as PEM
+	rsaKey, err := x509.ParsePKCS1PrivateKey(decrypedPemBlock)
+	if err != nil {
+		return cert, fmt.Errorf("failed parse rsa as pem: %s", err)
+	}
+
+	// Marshal the PEM encoded RSA key to DER and the DER encoded bytes to PEM again
+	pemdata := pem.EncodeToMemory(
+		&pem.Block{
+			Type:  "RSA PRIVATE KEY",
+			Bytes: x509.MarshalPKCS1PrivateKey(rsaKey),
+		},
+	)
+
+	// Make a new TLS cert + key pair using the decrypted key
+	cert, err = tls.X509KeyPair(certIn, pemdata)
+	if err != nil {
+		return cert, fmt.Errorf("failed to make new tls cert and key pair for kafka client: %s", err)
+	}
+
+	return cert, nil
 }
 
 // CanReadCertAndKey returns true if the certificate and key files already exists,
@@ -173,7 +224,17 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 			plog.Fatalln(err)
 		}
 		if canReadCertAndKey {
-			cert, err := tls.LoadX509KeyPair(opts.tlsCertFile, opts.tlsKeyFile)
+
+			var cert tls.Certificate
+			var err error
+
+			// If the TLS key password is provided, decrypt the key portion of the keypair, otherwise load it directly.
+			if opts.tlsKeyPassword != "" {
+				cert, err = loadTlsCertWithPassword(opts.tlsCertFile, opts.tlsKeyFile, opts.tlsKeyPassword)
+			} else {
+				cert, err = tls.LoadX509KeyPair(opts.tlsCertFile, opts.tlsKeyFile)
+			}
+
 			if err == nil {
 				config.Net.TLS.Config.Certificates = []tls.Certificate{cert}
 			} else {
@@ -499,6 +560,7 @@ func main() {
 	kingpin.Flag("sasl.password", "SASL user password.").Default("").StringVar(&opts.saslPassword)
 	kingpin.Flag("sasl.mechanism", "The SASL SCRAM SHA algorithm sha256 or sha512 as mechanism").Default("").StringVar(&opts.saslMechanism)
 	kingpin.Flag("tls.enabled", "Connect using TLS.").Default("false").BoolVar(&opts.useTLS)
+	kingpin.Flag("tls.key-password", "The optional password needed to decypt a TLS key file.").Default("").StringVar(&opts.tlsKeyPassword)
 	kingpin.Flag("tls.ca-file", "The optional certificate authority file for TLS client authentication.").Default("").StringVar(&opts.tlsCAFile)
 	kingpin.Flag("tls.cert-file", "The optional certificate file for client authentication.").Default("").StringVar(&opts.tlsCertFile)
 	kingpin.Flag("tls.key-file", "The optional key file for client authentication.").Default("").StringVar(&opts.tlsKeyFile)
