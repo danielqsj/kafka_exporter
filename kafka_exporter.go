@@ -565,9 +565,11 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			return
 		}
 		for _, group := range describeGroups.Groups {
+			topicPartitionAssignments := make(map[string]map[int32]*sarama.GroupMemberDescription)
 			offsetFetchRequest := sarama.OffsetFetchRequest{ConsumerGroup: group.GroupId, Version: 1}
 			if e.offsetShowAll {
 				for topic, partitions := range offset {
+					topicPartitionAssignments[topic] = make(map[int32]*sarama.GroupMemberDescription)
 					for partition := range partitions {
 						offsetFetchRequest.AddPartition(topic, partition)
 					}
@@ -580,8 +582,19 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 						return
 					}
 					for topic, partions := range assignment.Topics {
+						topicPartitionAssignments[topic] = make(map[int32]*sarama.GroupMemberDescription)
 						for _, partition := range partions {
 							offsetFetchRequest.AddPartition(topic, partition)
+						}
+					}
+				}
+			}
+			for _, member := range group.Members {
+				assignment, err := member.GetMemberAssignment()
+				if err == nil {
+					for topic, partitions := range assignment.Topics {
+						for _, partition := range partitions {
+							topicPartitionAssignments[topic][partition] = member
 						}
 					}
 				}
@@ -617,10 +630,18 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 						klog.Errorf("Error for  partition %d :%v", partition, err.Error())
 						continue
 					}
+
+					var clientId = ""
+					var clientHost = ""
+					if assignedMember, hasMember := topicPartitionAssignments[topic][partition]; hasMember {
+						clientId = assignedMember.ClientId
+						clientHost = assignedMember.ClientHost
+					}
+
 					currentOffset := offsetFetchResponseBlock.Offset
 					currentOffsetSum += currentOffset
 					ch <- prometheus.MustNewConstMetric(
-						consumergroupCurrentOffset, prometheus.GaugeValue, float64(currentOffset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
+						consumergroupCurrentOffset, prometheus.GaugeValue, float64(currentOffset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10), clientId, clientHost,
 					)
 					e.mu.Lock()
 					if offset, ok := offset[topic][partition]; ok {
@@ -634,7 +655,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 							lagSum += lag
 						}
 						ch <- prometheus.MustNewConstMetric(
-							consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
+							consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10), clientId, clientHost,
 						)
 					} else {
 						klog.Errorf("No offset of topic %s partition %d, cannot get consumer group lag", topic, partition)
@@ -851,7 +872,7 @@ func setup(
 	consumergroupCurrentOffset = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "consumergroup", "current_offset"),
 		"Current Offset of a ConsumerGroup at Topic/Partition",
-		[]string{"consumergroup", "topic", "partition"}, labels,
+		[]string{"consumergroup", "topic", "partition", "client_id", "client_host"}, labels,
 	)
 
 	consumergroupCurrentOffsetSum = prometheus.NewDesc(
@@ -863,7 +884,7 @@ func setup(
 	consumergroupLag = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "consumergroup", "lag"),
 		"Current Approximate Lag of a ConsumerGroup at Topic/Partition",
-		[]string{"consumergroup", "topic", "partition"}, labels,
+		[]string{"consumergroup", "topic", "partition", "client_id", "client_host"}, labels,
 	)
 
 	consumergroupLagZookeeper = prometheus.NewDesc(
