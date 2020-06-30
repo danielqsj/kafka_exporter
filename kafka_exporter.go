@@ -601,7 +601,7 @@ func main() {
 	consumergroupLagZookeeper = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "consumergroupzookeeper", "lag_zookeeper"),
 		"Current Approximate Lag(zookeeper) of a ConsumerGroup at Topic/Partition",
-		[]string{"consumergroup", "topic", "partition"}, nil,
+		[]string{"consumergroup", "topic", "partition"}, labels,
 	)
 
 	consumergroupLagSum = prometheus.NewDesc(
