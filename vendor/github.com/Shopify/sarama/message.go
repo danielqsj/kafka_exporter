@@ -85,7 +85,6 @@ func (m *Message) encode(pe packetEncoder) error {
 		payload = m.compressedCache
 		m.compressedCache = nil
 	} else if m.Value != nil {
-
 		payload, err = compress(m.Codec, m.CompressionLevel, m.Value)
 		if err != nil {
 			return err
@@ -103,7 +102,10 @@ func (m *Message) encode(pe packetEncoder) error {
 }
 
 func (m *Message) decode(pd packetDecoder) (err error) {
-	err = pd.push(newCRC32Field(crcIEEE))
+	crc32Decoder := acquireCrc32Field(crcIEEE)
+	defer releaseCrc32Field(crc32Decoder)
+
+	err = pd.push(crc32Decoder)
 	if err != nil {
 		return err
 	}

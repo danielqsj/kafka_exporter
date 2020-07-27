@@ -60,13 +60,28 @@ const (
 	noProducerEpoch = -1
 )
 
-func (t *transactionManager) getAndIncrementSequenceNumber(topic string, partition int32) int32 {
+func (t *transactionManager) getAndIncrementSequenceNumber(topic string, partition int32) (int32, int16) {
 	key := fmt.Sprintf("%s-%d", topic, partition)
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 	sequence := t.sequenceNumbers[key]
 	t.sequenceNumbers[key] = sequence + 1
-	return sequence
+	return sequence, t.producerEpoch
+}
+
+func (t *transactionManager) bumpEpoch() {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	t.producerEpoch++
+	for k := range t.sequenceNumbers {
+		t.sequenceNumbers[k] = 0
+	}
+}
+
+func (t *transactionManager) getProducerID() (int64, int16) {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	return t.producerID, t.producerEpoch
 }
 
 func newTransactionManager(conf *Config, client Client) (*transactionManager, error) {
@@ -191,16 +206,25 @@ type ProducerMessage struct {
 	// Partition is the partition that the message was sent to. This is only
 	// guaranteed to be defined if the message was successfully delivered.
 	Partition int32
-	// Timestamp is the timestamp assigned to the message by the broker. This
-	// is only guaranteed to be defined if the message was successfully
-	// delivered, RequiredAcks is not NoResponse, and the Kafka broker is at
-	// least version 0.10.0.
+	// Timestamp can vary in behaviour depending on broker configuration, being
+	// in either one of the CreateTime or LogAppendTime modes (default CreateTime),
+	// and requiring version at least 0.10.0.
+	//
+	// When configured to CreateTime, the timestamp is specified by the producer
+	// either by explicitly setting this field, or when the message is added
+	// to a produce set.
+	//
+	// When configured to LogAppendTime, the timestamp assigned to the message
+	// by the broker. This is only guaranteed to be defined if the message was
+	// successfully delivered and RequiredAcks is not NoResponse.
 	Timestamp time.Time
 
 	retries        int
 	flags          flagSet
 	expectation    chan *ProducerError
 	sequenceNumber int32
+	producerEpoch  int16
+	hasSequence    bool
 }
 
 const producerMessageOverhead = 26 // the metadata overhead of CRC, flags, etc.
@@ -227,6 +251,9 @@ func (m *ProducerMessage) byteSize(version int) int {
 func (m *ProducerMessage) clear() {
 	m.flags = 0
 	m.retries = 0
+	m.sequenceNumber = 0
+	m.producerEpoch = 0
+	m.hasSequence = false
 }
 
 // ProducerError is the type of error generated when the producer fails to deliver a message.
@@ -381,10 +408,6 @@ func (tp *topicProducer) dispatch() {
 				continue
 			}
 		}
-		// All messages being retried (sent or not) have already had their retry count updated
-		if tp.parent.conf.Producer.Idempotent && msg.retries == 0 {
-			msg.sequenceNumber = tp.parent.txnmgr.getAndIncrementSequenceNumber(msg.Topic, msg.Partition)
-		}
 
 		handler := tp.handlers[msg.Partition]
 		if handler == nil {
@@ -404,7 +427,7 @@ func (tp *topicProducer) partitionMessage(msg *ProducerMessage) error {
 	var partitions []int32
 
 	err := tp.breaker.Run(func() (err error) {
-		var requiresConsistency = false
+		requiresConsistency := false
 		if ep, ok := tp.partitioner.(DynamicConsistencyPartitioner); ok {
 			requiresConsistency = ep.MessageRequiresConsistency(msg)
 		} else {
@@ -513,7 +536,6 @@ func (pp *partitionProducer) dispatch() {
 	}()
 
 	for msg := range pp.input {
-
 		if pp.brokerProducer != nil && pp.brokerProducer.abandoned != nil {
 			select {
 			case <-pp.brokerProducer.abandoned:
@@ -562,6 +584,15 @@ func (pp *partitionProducer) dispatch() {
 				continue
 			}
 			Logger.Printf("producer/leader/%s/%d selected broker %d\n", pp.topic, pp.partition, pp.leader.ID())
+		}
+
+		// Now that we know we have a broker to actually try and send this message to, generate the sequence
+		// number for it.
+		// All messages being retried (sent or not) have already had their retry count updated
+		// Also, ignore "special" syn/fin messages used to sync the brokerProducer and the topicProducer.
+		if pp.parent.conf.Producer.Idempotent && msg.retries == 0 && msg.flags == 0 {
+			msg.sequenceNumber, msg.producerEpoch = pp.parent.txnmgr.getAndIncrementSequenceNumber(msg.Topic, msg.Partition)
+			msg.hasSequence = true
 		}
 
 		pp.brokerProducer.input <- msg
@@ -645,6 +676,7 @@ func (p *asyncProducer) newBrokerProducer(broker *Broker) *brokerProducer {
 		input:          input,
 		output:         bridge,
 		responses:      responses,
+		stopchan:       make(chan struct{}),
 		buffer:         newProduceSet(p),
 		currentRetries: make(map[string]map[int32]error),
 	}
@@ -689,6 +721,7 @@ type brokerProducer struct {
 	output    chan<- *produceSet
 	responses <-chan *brokerProducerResponse
 	abandoned chan struct{}
+	stopchan  chan struct{}
 
 	buffer     *produceSet
 	timer      <-chan time.Time
@@ -704,10 +737,15 @@ func (bp *brokerProducer) run() {
 
 	for {
 		select {
-		case msg := <-bp.input:
-			if msg == nil {
+		case msg, ok := <-bp.input:
+			if !ok {
+				Logger.Printf("producer/broker/%d input chan closed\n", bp.broker.ID())
 				bp.shutdown()
 				return
+			}
+
+			if msg == nil {
+				continue
 			}
 
 			if msg.flags&syn == syn {
@@ -735,12 +773,21 @@ func (bp *brokerProducer) run() {
 			}
 
 			if bp.buffer.wouldOverflow(msg) {
-				if err := bp.waitForSpace(msg); err != nil {
+				Logger.Printf("producer/broker/%d maximum request accumulated, waiting for space\n", bp.broker.ID())
+				if err := bp.waitForSpace(msg, false); err != nil {
 					bp.parent.retryMessage(msg, err)
 					continue
 				}
 			}
 
+			if bp.parent.txnmgr.producerID != noProducerID && bp.buffer.producerEpoch != msg.producerEpoch {
+				// The epoch was reset, need to roll the buffer over
+				Logger.Printf("producer/broker/%d detected epoch rollover, waiting for new buffer\n", bp.broker.ID())
+				if err := bp.waitForSpace(msg, true); err != nil {
+					bp.parent.retryMessage(msg, err)
+					continue
+				}
+			}
 			if err := bp.buffer.add(msg); err != nil {
 				bp.parent.returnError(msg, err)
 				continue
@@ -753,8 +800,14 @@ func (bp *brokerProducer) run() {
 			bp.timerFired = true
 		case output <- bp.buffer:
 			bp.rollOver()
-		case response := <-bp.responses:
-			bp.handleResponse(response)
+		case response, ok := <-bp.responses:
+			if ok {
+				bp.handleResponse(response)
+			}
+		case <-bp.stopchan:
+			Logger.Printf(
+				"producer/broker/%d run loop asked to stop\n", bp.broker.ID())
+			return
 		}
 
 		if bp.timerFired || bp.buffer.readyToFlush() {
@@ -778,7 +831,7 @@ func (bp *brokerProducer) shutdown() {
 	for response := range bp.responses {
 		bp.handleResponse(response)
 	}
-
+	close(bp.stopchan)
 	Logger.Printf("producer/broker/%d shut down\n", bp.broker.ID())
 }
 
@@ -790,9 +843,7 @@ func (bp *brokerProducer) needsRetry(msg *ProducerMessage) error {
 	return bp.currentRetries[msg.Topic][msg.Partition]
 }
 
-func (bp *brokerProducer) waitForSpace(msg *ProducerMessage) error {
-	Logger.Printf("producer/broker/%d maximum request accumulated, waiting for space\n", bp.broker.ID())
-
+func (bp *brokerProducer) waitForSpace(msg *ProducerMessage, forceRollover bool) error {
 	for {
 		select {
 		case response := <-bp.responses:
@@ -800,7 +851,7 @@ func (bp *brokerProducer) waitForSpace(msg *ProducerMessage) error {
 			// handling a response can change our state, so re-check some things
 			if reason := bp.needsRetry(msg); reason != nil {
 				return reason
-			} else if !bp.buffer.wouldOverflow(msg) {
+			} else if !bp.buffer.wouldOverflow(msg) && !forceRollover {
 				return nil
 			}
 		case bp.output <- bp.buffer:
@@ -1011,6 +1062,12 @@ func (p *asyncProducer) shutdown() {
 }
 
 func (p *asyncProducer) returnError(msg *ProducerMessage, err error) {
+	// We need to reset the producer ID epoch if we set a sequence number on it, because the broker
+	// will never see a message with this number, so we can never continue the sequence.
+	if msg.hasSequence {
+		Logger.Printf("producer/txnmanager rolling over epoch due to publish failure on %s/%d", msg.Topic, msg.Partition)
+		p.txnmgr.bumpEpoch()
+	}
 	msg.clear()
 	pErr := &ProducerError{Msg: msg, Err: err}
 	if p.conf.Producer.Return.Errors {

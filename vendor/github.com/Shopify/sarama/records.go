@@ -8,7 +8,6 @@ const (
 	defaultRecords
 
 	magicOffset = 16
-	magicLength = 1
 )
 
 // Records implements a union type containing either a RecordBatch or a legacy MessageSet.
@@ -185,12 +184,7 @@ func (r *Records) isOverflow() (bool, error) {
 }
 
 func magicValue(pd packetDecoder) (int8, error) {
-	dec, err := pd.peek(magicOffset, magicLength)
-	if err != nil {
-		return 0, err
-	}
-
-	return dec.getInt8()
+	return pd.peekInt8(magicOffset)
 }
 
 func (r *Records) getControlRecord() (ControlRecord, error) {

@@ -1,5 +1,174 @@
 # Changelog
 
+#### Unreleased
+
+#### Version 1.26.1 (2020-02-04)
+
+Improvements:
+- Add requests-in-flight metric ([1539](https://github.com/Shopify/sarama/pull/1539))
+- Fix misleading example for cluster admin ([1595](https://github.com/Shopify/sarama/pull/1595))
+- Replace Travis with GitHub Actions, linters housekeeping ([1573](https://github.com/Shopify/sarama/pull/1573))
+- Allow BalanceStrategy to provide custom assignment data ([1592](https://github.com/Shopify/sarama/pull/1592))
+
+Bug Fixes:
+- Adds back Consumer.Offsets.CommitInterval to fix API ([1590](https://github.com/Shopify/sarama/pull/1590))
+- Fix error message s/CommitInterval/AutoCommit.Interval ([1589](https://github.com/Shopify/sarama/pull/1589))
+
+#### Version 1.26.0 (2020-01-24)
+
+New Features:
+- Enable zstd compression
+  ([1574](https://github.com/Shopify/sarama/pull/1574),
+  [1582](https://github.com/Shopify/sarama/pull/1582))
+- Support headers in tools kafka-console-producer
+  ([1549](https://github.com/Shopify/sarama/pull/1549))
+
+Improvements:
+- Add SASL AuthIdentity to SASL frames (authzid)
+  ([1585](https://github.com/Shopify/sarama/pull/1585)).
+
+Bug Fixes:
+- Sending messages with ZStd compression enabled fails in multiple ways
+  ([1252](https://github.com/Shopify/sarama/issues/1252)).
+- Use the broker for any admin on BrokerConfig
+  ([1571](https://github.com/Shopify/sarama/pull/1571)).
+- Set DescribeConfigRequest Version field
+  ([1576](https://github.com/Shopify/sarama/pull/1576)).
+- ConsumerGroup flooding logs with client/metadata update req
+  ([1578](https://github.com/Shopify/sarama/pull/1578)).
+- MetadataRequest version in DescribeCluster
+  ([1580](https://github.com/Shopify/sarama/pull/1580)).
+- Fix deadlock in consumer group handleError
+  ([1581](https://github.com/Shopify/sarama/pull/1581))
+- Fill in the Fetch{Request,Response} protocol
+  ([1582](https://github.com/Shopify/sarama/pull/1582)).
+- Retry topic request on ControllerNotAvailable
+  ([1586](https://github.com/Shopify/sarama/pull/1586)).
+
+#### Version 1.25.0 (2020-01-13)
+
+New Features:
+- Support TLS protocol in kafka-producer-performance
+  ([1538](https://github.com/Shopify/sarama/pull/1538)).
+- Add support for kafka 2.4.0
+  ([1552](https://github.com/Shopify/sarama/pull/1552)).
+
+Improvements:
+- Allow the Consumer to disable auto-commit offsets
+  ([1164](https://github.com/Shopify/sarama/pull/1164)).
+- Produce records with consistent timestamps
+  ([1455](https://github.com/Shopify/sarama/pull/1455)).
+
+Bug Fixes:
+- Fix incorrect SetTopicMetadata name mentions
+  ([1534](https://github.com/Shopify/sarama/pull/1534)).
+- Fix client.tryRefreshMetadata Println
+  ([1535](https://github.com/Shopify/sarama/pull/1535)).
+- Fix panic on calling updateMetadata on closed client
+  ([1531](https://github.com/Shopify/sarama/pull/1531)).
+- Fix possible faulty metrics in TestFuncProducing
+  ([1545](https://github.com/Shopify/sarama/pull/1545)).
+
+#### Version 1.24.1 (2019-10-31)
+
+New Features:
+- Add DescribeLogDirs Request/Response pair
+  ([1520](https://github.com/Shopify/sarama/pull/1520)).
+
+Bug Fixes:
+- Fix ClusterAdmin returning invalid controller ID on DescribeCluster
+  ([1518](https://github.com/Shopify/sarama/pull/1518)).
+- Fix issue with consumergroup not rebalancing when new partition is added
+  ([1525](https://github.com/Shopify/sarama/pull/1525)).
+- Ensure consistent use of read/write deadlines
+  ([1529](https://github.com/Shopify/sarama/pull/1529)).
+
+#### Version 1.24.0 (2019-10-09)
+
+New Features:
+- Add sticky partition assignor
+  ([1416](https://github.com/Shopify/sarama/pull/1416)).
+- Switch from cgo zstd package to pure Go implementation
+  ([1477](https://github.com/Shopify/sarama/pull/1477)).
+
+Improvements:
+- Allow creating ClusterAdmin from client
+  ([1415](https://github.com/Shopify/sarama/pull/1415)).
+- Set KafkaVersion in ListAcls method
+  ([1452](https://github.com/Shopify/sarama/pull/1452)).
+- Set request version in CreateACL ClusterAdmin method
+  ([1458](https://github.com/Shopify/sarama/pull/1458)).
+- Set request version in DeleteACL ClusterAdmin method
+  ([1461](https://github.com/Shopify/sarama/pull/1461)).
+- Handle missed error codes on TopicMetaDataRequest and GroupCoordinatorRequest
+  ([1464](https://github.com/Shopify/sarama/pull/1464)).
+- Remove direct usage of gofork
+  ([1465](https://github.com/Shopify/sarama/pull/1465)).
+- Add support for Go 1.13
+  ([1478](https://github.com/Shopify/sarama/pull/1478)).
+- Improve behavior of NewMockListAclsResponse
+  ([1481](https://github.com/Shopify/sarama/pull/1481)).
+
+Bug Fixes:
+- Fix race condition in consumergroup example
+  ([1434](https://github.com/Shopify/sarama/pull/1434)).
+- Fix brokerProducer goroutine leak
+  ([1442](https://github.com/Shopify/sarama/pull/1442)).
+- Use released version of lz4 library
+  ([1469](https://github.com/Shopify/sarama/pull/1469)).
+- Set correct version in MockDeleteTopicsResponse
+  ([1484](https://github.com/Shopify/sarama/pull/1484)).
+- Fix CLI help message typo
+  ([1494](https://github.com/Shopify/sarama/pull/1494)).
+
+Known Issues:
+- Please **don't** use Zstd, as it doesn't work right now.
+  See https://github.com/Shopify/sarama/issues/1252
+
+#### Version 1.23.1 (2019-07-22)
+
+Bug Fixes:
+- Fix fetch delete bug record
+  ([1425](https://github.com/Shopify/sarama/pull/1425)).
+- Handle SASL/OAUTHBEARER token rejection
+  ([1428](https://github.com/Shopify/sarama/pull/1428)).
+
+#### Version 1.23.0 (2019-07-02)
+
+New Features:
+- Add support for Kafka 2.3.0
+  ([1418](https://github.com/Shopify/sarama/pull/1418)).
+- Add support for ListConsumerGroupOffsets v2
+  ([1374](https://github.com/Shopify/sarama/pull/1374)).
+- Add support for DeleteConsumerGroup
+  ([1417](https://github.com/Shopify/sarama/pull/1417)).
+- Add support for SASLVersion configuration
+  ([1410](https://github.com/Shopify/sarama/pull/1410)).
+- Add kerberos support
+  ([1366](https://github.com/Shopify/sarama/pull/1366)).
+
+Improvements:
+- Improve sasl_scram_client example
+  ([1406](https://github.com/Shopify/sarama/pull/1406)).
+- Fix shutdown and race-condition in consumer-group example
+  ([1404](https://github.com/Shopify/sarama/pull/1404)).
+- Add support for error codes 77—81
+  ([1397](https://github.com/Shopify/sarama/pull/1397)).
+- Pool internal objects allocated per message
+  ([1385](https://github.com/Shopify/sarama/pull/1385)).
+- Reduce packet decoder allocations
+  ([1373](https://github.com/Shopify/sarama/pull/1373)).
+- Support timeout when fetching metadata
+  ([1359](https://github.com/Shopify/sarama/pull/1359)).
+
+Bug Fixes:
+- Fix fetch size integer overflow
+  ([1376](https://github.com/Shopify/sarama/pull/1376)).
+- Handle and log throttled FetchResponses
+  ([1383](https://github.com/Shopify/sarama/pull/1383)).
+- Refactor misspelled word Resouce to Resource
+  ([1368](https://github.com/Shopify/sarama/pull/1368)).
+
 #### Version 1.22.1 (2019-04-29)
 
 Improvements:
