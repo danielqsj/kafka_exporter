@@ -155,8 +155,9 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 	if opts.useTLS {
 		config.Net.TLS.Enable = true
 
+		rootCAs, _ := x509.SystemCertPool()
 		config.Net.TLS.Config = &tls.Config{
-			RootCAs:            x509.NewCertPool(),
+			RootCAs:            rootCAs,
 			InsecureSkipVerify: opts.tlsInsecureSkipTLSVerify,
 		}
 
