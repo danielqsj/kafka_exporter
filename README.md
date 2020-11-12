@@ -39,7 +39,6 @@ Dependency
 -	[Prometheus](https://prometheus.io)
 -	[Sarama](https://shopify.github.io/sarama)
 -	[Golang](https://golang.org)
--	[Dep](https://github.com/golang/dep)
 
 Download
 --------
