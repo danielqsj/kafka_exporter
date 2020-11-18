@@ -98,6 +98,7 @@ This image is configurable using different flags
 | sasl.handshake               | true       | Only set this to false if using a non-Kafka SASL proxy                                              |
 | sasl.username                |            | SASL user name                                                                                      |
 | sasl.password                |            | SASL user password                                                                                  |
+| sasl.mechanism               |            | SASL mechanism can be plain, scram-sha512, scram-sha256
 | tls.enabled                  | false      | Connect using TLS                                                                                   |
 | tls.ca-file                  |            | The optional certificate authority file for TLS client authentication                               |
 | tls.cert-file                |            | The optional certificate file for client authentication                                             |
