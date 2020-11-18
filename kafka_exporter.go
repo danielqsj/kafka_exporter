@@ -53,14 +53,14 @@ func getOwnerLabelMap() (map[string]string, bool) {
 	configMap := make(map[string][]string)
 	configMapByStartWith := make(map[string]string)
 
-	configString, isSet := os.LookupEnv("CONSUMER_GROUP_EXTRA_LABELS")
+	configString, isSet := os.LookupEnv("CONSUMERGROUP_LAG_CUSTOM_LABELS")
 	if isSet == false{
 		return configMapByStartWith, false
 	}
 
 	err := json.Unmarshal([]byte(configString), &configMap)
 	if err != nil {
-		plog.Warnln("Can not parse string from ENV CONSUMER_GROUP_EXTRA_LABELS, skipping setting owner label")
+		plog.Warnln("Can not parse string from ENV CONSUMERGROUP_LAG_CUSTOM_LABELS, skipping setting owner label")
 		return configMapByStartWith, false
 	}
 
