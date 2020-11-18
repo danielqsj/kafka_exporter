@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -46,6 +47,45 @@ var (
 	consumergroupLagZookeeper          *prometheus.Desc
 	consumergroupMembers               *prometheus.Desc
 )
+
+// Convert the ENV json string in a map
+func getOwnerLabelMap() (map[string]string, bool) {
+	configMap := make(map[string][]string)
+	configMapByStartWith := make(map[string]string)
+
+	configString, isSet := os.LookupEnv("CONSUMER_GROUP_EXTRA_LABELS")
+	if isSet == false{
+		return configMapByStartWith, false
+	}
+
+	err := json.Unmarshal([]byte(configString), &configMap)
+	if err != nil {
+		plog.Warnln("Can not parse string from ENV CONSUMER_GROUP_EXTRA_LABELS, skipping setting owner label")
+		return configMapByStartWith, false
+	}
+
+	// We have owner as key and list of "start with" as values, we need to revert it
+	// for a more efficient lookup later on
+	for owner, startWithList := range configMap {
+		for _, startWith := range startWithList {
+			configMapByStartWith[startWith] = owner
+		}
+	}
+	return configMapByStartWith, true
+}
+
+// Finds the desired owner label when the groupId starts with a map key
+// It will returns in the first match
+func getConsumerGroupLagOwnerLabel(groupId string,  configMapByStartWith map[string]string) (string, bool){
+	for startWith, owner := range configMapByStartWith {
+		if strings.HasPrefix(groupId, startWith) {
+			return owner, true
+		}
+	}
+	return "", false
+}
+
+
 
 // Exporter collects Kafka stats from the given server and exports them using
 // the prometheus metrics package.
@@ -487,6 +527,8 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 					if topicConsumed {
 						var currentOffsetSum int64
 						var lagSum int64
+						var configMapByStartWith, _ = getOwnerLabelMap()
+						var ownerLabel, _ = getConsumerGroupLagOwnerLabel(group.GroupId, configMapByStartWith)
 						for partition, offsetFetchResponseBlock := range partitions {
 							err := offsetFetchResponseBlock.Err
 							if err != sarama.ErrNoError {
@@ -510,7 +552,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 									lagSum += lag
 								}
 								ch <- prometheus.MustNewConstMetric(
-									consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
+									consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10), ownerLabel,
 								)
 							} else {
 								plog.Errorf("No offset of topic %s partition %d, cannot get consumer group lag", topic, partition)
@@ -521,7 +563,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 							consumergroupCurrentOffsetSum, prometheus.GaugeValue, float64(currentOffsetSum), group.GroupId, topic,
 						)
 						ch <- prometheus.MustNewConstMetric(
-							consumergroupLagSum, prometheus.GaugeValue, float64(lagSum), group.GroupId, topic,
+							consumergroupLagSum, prometheus.GaugeValue, float64(lagSum), group.GroupId, topic, ownerLabel,
 						)
 					}
 				}
@@ -659,7 +701,7 @@ func main() {
 	consumergroupLag = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "consumergroup", "lag"),
 		"Current Approximate Lag of a ConsumerGroup at Topic/Partition",
-		[]string{"consumergroup", "topic", "partition"}, labels,
+		[]string{"consumergroup", "topic", "partition", "owner"}, labels,
 	)
 
 	consumergroupLagZookeeper = prometheus.NewDesc(
@@ -671,7 +713,7 @@ func main() {
 	consumergroupLagSum = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "consumergroup", "lag_sum"),
 		"Current Approximate Lag of a ConsumerGroup at Topic for all partitions",
-		[]string{"consumergroup", "topic"}, labels,
+		[]string{"consumergroup", "topic", "owner"}, labels,
 	)
 
 	consumergroupMembers = prometheus.NewDesc(
