@@ -109,6 +109,8 @@ This image is configurable using different flags
 | web.telemetry-path           | /metrics   | Path under which to expose metrics                                                                  |
 | log.level                    | info       | Only log messages with the given severity or above. Valid levels: [debug, info, warn, error, fatal] |
 | log.enable-sarama            | false      | Turn on Sarama logging                                                                              |
+| max.offsets                  | 1000       | Maximum number of offsets to store in the interpolation table for a partition |
+| prune.interval               | 30         | How frequently should the interpolation table be pruned, in seconds |
 
 ### Notes
 
@@ -130,7 +132,7 @@ For details on the underlying metrics please see [Apache Kafka](https://kafka.ap
 
 **Metrics details**
 
-| Name            | Exposed informations                   |
+| Name            | Exposed information                   |
 | --------------- | -------------------------------------- |
 | `kafka_brokers` | Number of Brokers in the Kafka Cluster |
 
@@ -146,7 +148,7 @@ kafka_brokers 3
 
 **Metrics details**
 
-| Name                                               | Exposed informations                                |
+| Name                                               | Exposed information                                |
 | -------------------------------------------------- | --------------------------------------------------- |
 | `kafka_topic_partitions`                           | Number of partitions for this Topic                 |
 | `kafka_topic_partition_current_offset`             | Current Offset of a Broker at Topic/Partition       |
@@ -197,7 +199,7 @@ kafka_topic_partition_under_replicated_partition{partition="0",topic="__consumer
 
 **Metrics details**
 
-| Name                                 | Exposed informations                                          |
+| Name                                 | Exposed information                                          |
 | ------------------------------------ | ------------------------------------------------------------- |
 | `kafka_consumergroup_current_offset` | Current Offset of a ConsumerGroup at Topic/Partition          |
 | `kafka_consumergroup_lag`            | Current Approximate Lag of a ConsumerGroup at Topic/Partition |
@@ -214,12 +216,47 @@ kafka_consumergroup_current_offset{consumergroup="KMOffsetCache-kafka-manager-38
 kafka_consumergroup_lag{consumergroup="KMOffsetCache-kafka-manager-3806276532-ml44w",partition="0",topic="__consumer_offsets"} 1
 ```
 
+### Consumer Lag
+
+**Metric Details**
+
+| Name                                 | Exposed information                                          |
+| ------------------------------------ | ------------------------------------------------------------- |
+| `kafka_consumer_lag_millis` | Current approximation of consumer lag for a ConsumerGroup at Topic/Partition          |
+| `kafka_consumer_lag_extrapolation`            | Indicates that a consumer group lag estimation used extrapolation |
+| `kafka_consumer_lag_interpolation`            | Indicates that a consumer group lag estimation used interpolation |
+
+**Metrics output example**
+```
+# HELP kafka_consumer_lag_extrapolation Indicates that a consumer group lag estimation used extrapolation
+# TYPE kafka_consumer_lag_extrapolation counter
+kafka_consumer_lag_extrapolation{consumergroup="perf-consumer-74084",partition="0",topic="test"} 1
+   
+# HELP kafka_consumer_lag_interpolation Indicates that a consumer group lag estimation used interpolation
+# TYPE kafka_consumer_lag_interpolation counter
+kafka_consumer_lag_interpolation{consumergroup="perf-consumer-74084",partition="0",topic="test"} 1
+   
+# HELP kafka_consumer_lag_millis Current approximation of consumer lag for a ConsumerGroup at Topic/Partition
+# TYPE kafka_consumer_lag_millis gauge
+kafka_consumer_lag_millis{consumergroup="perf-consumer-74084",partition="0",topic="test"} 3.4457231197552e+10
+```
+
 Grafana Dashboard
 -------
 
 Grafana Dashboard ID: 7589, name: Kafka Exporter Overview.
 
 For details of the dashboard please see [Kafka Exporter Overview](https://grafana.com/dashboards/7589).
+
+Lag Estimation
+-
+The technique to estimate lag for a consumer group, topic, and partition is taken from the [Lightbend Kafka Lag Exporter](https://github.com/lightbend/kafka-lag-exporter). 
+
+Once the exporter starts up, sampling of the next offset to be produced begins. The interpolation table is built from these samples, and the current offset for each monitored consumer group are compared against values in the table. If an upper and lower bound for the current offset of a consumer group are in the table, the interpolation technique is used. If only an upper bound is container within the table, extrapolation is used. 
+
+At a configurable interval `prune.interval` (default is 30 seconds) an operation to prune the interpolation table is performed. Any consumer group or topic that are no longer listed by the broker is removed. The number of offsets for each partition is trimmed down to `max.offsets` (default 1000), with the oldest offsets removed first.
+
+Pruning of the interpolation table happens on a separate thread and thread safety is ensured by a lock around the interpolation table. 
 
 Contribute
 ----------

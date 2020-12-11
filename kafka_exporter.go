@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,21 +31,24 @@ const (
 )
 
 var (
-	clusterBrokers                     *prometheus.Desc
-	topicPartitions                    *prometheus.Desc
-	topicCurrentOffset                 *prometheus.Desc
-	topicOldestOffset                  *prometheus.Desc
-	topicPartitionLeader               *prometheus.Desc
-	topicPartitionReplicas             *prometheus.Desc
-	topicPartitionInSyncReplicas       *prometheus.Desc
-	topicPartitionUsesPreferredReplica *prometheus.Desc
-	topicUnderReplicatedPartition      *prometheus.Desc
-	consumergroupCurrentOffset         *prometheus.Desc
-	consumergroupCurrentOffsetSum      *prometheus.Desc
-	consumergroupLag                   *prometheus.Desc
-	consumergroupLagSum                *prometheus.Desc
-	consumergroupLagZookeeper          *prometheus.Desc
-	consumergroupMembers               *prometheus.Desc
+	clusterBrokers                           *prometheus.Desc
+	topicPartitions                          *prometheus.Desc
+	topicCurrentOffset                       *prometheus.Desc
+	topicOldestOffset                        *prometheus.Desc
+	topicPartitionLeader                     *prometheus.Desc
+	topicPartitionReplicas                   *prometheus.Desc
+	topicPartitionInSyncReplicas             *prometheus.Desc
+	topicPartitionUsesPreferredReplica       *prometheus.Desc
+	topicUnderReplicatedPartition            *prometheus.Desc
+	consumergroupCurrentOffset               *prometheus.Desc
+	consumergroupCurrentOffsetSum            *prometheus.Desc
+	consumergroupUncomittedOffsets           *prometheus.Desc
+	consumergroupUncommittedOffsetsSum       *prometheus.Desc
+	consumergroupUncommittedOffsetsZookeeper *prometheus.Desc
+	consumergroupMembers                     *prometheus.Desc
+	topicPartitionLagMillis                  *prometheus.Desc
+	lagDatapointUsedInterpolation            *prometheus.Desc
+	lagDatapointUsedExtrapolation            *prometheus.Desc
 )
 
 // Exporter collects Kafka stats from the given server and exports them using
@@ -63,6 +67,9 @@ type Exporter struct {
 	sgWaitCh                chan struct{}
 	sgChans                 []chan<- prometheus.Metric
 	consumerGroupFetchAll   bool
+	consumerGroupLagTable   interpolationMap
+	kafkaOpts               kafkaOpts
+	config                  *sarama.Config
 }
 
 type kafkaOpts struct {
@@ -120,7 +127,7 @@ func canReadFile(path string) bool {
 }
 
 // NewExporter returns an initialized Exporter.
-func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Exporter, error) {
+func NewExporter(opts kafkaOpts, topicFilter, groupFilter string) (*Exporter, error) {
 	var zookeeperClient *kazoo.Kazoo
 	config := sarama.NewConfig()
 	config.ClientID = clientID
@@ -222,6 +229,9 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		sgWaitCh:                nil,
 		sgChans:                 []chan<- prometheus.Metric{},
 		consumerGroupFetchAll:   config.Version.IsAtLeast(sarama.V2_0_0_0),
+		consumerGroupLagTable:   interpolationMap{mu: sync.Mutex{}},
+		kafkaOpts:               opts,
+		config:                  config,
 	}, nil
 }
 
@@ -251,9 +261,12 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- topicUnderReplicatedPartition
 	ch <- consumergroupCurrentOffset
 	ch <- consumergroupCurrentOffsetSum
-	ch <- consumergroupLag
-	ch <- consumergroupLagZookeeper
-	ch <- consumergroupLagSum
+	ch <- consumergroupUncomittedOffsets
+	ch <- consumergroupUncommittedOffsetsZookeeper
+	ch <- consumergroupUncommittedOffsetsSum
+	ch <- topicPartitionLagMillis
+	ch <- lagDatapointUsedInterpolation
+	ch <- lagDatapointUsedExtrapolation
 }
 
 func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
@@ -264,7 +277,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	// Locking to avoid race add
 	e.sgMutex.Lock()
 	e.sgChans = append(e.sgChans, ch)
-	// Safe to compare lenght since we own the Lock
+	// Safe to compare length since we own the Lock
 	if len(e.sgChans) == 1 {
 		e.sgWaitCh = make(chan struct{})
 		go e.collectChans(e.sgWaitCh)
@@ -429,7 +442,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 
 							consumerGroupLag := currentOffset - offset
 							ch <- prometheus.MustNewConstMetric(
-								consumergroupLagZookeeper, prometheus.GaugeValue, float64(consumerGroupLag), group.Name, topic, strconv.FormatInt(int64(partition), 10),
+								consumergroupUncommittedOffsetsZookeeper, prometheus.GaugeValue, float64(consumerGroupLag), group.Name, topic, strconv.FormatInt(int64(partition), 10),
 							)
 						}
 					}
@@ -520,6 +533,12 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 							)
 							e.mu.Lock()
 							if offset, ok := offset[topic][partition]; ok {
+								// Get and insert the next offset to be produced into the interpolation map
+								nextOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
+								if err != nil {
+								}
+								e.consumerGroupLagTable.createOrUpdate(group.GroupId, topic, partition, nextOffset)
+
 								// If the topic is consumed by that consumer group, but no offset associated with the partition
 								// forcing lag to -1 to be able to alert on that
 								var lag int64
@@ -530,7 +549,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 									lagSum += lag
 								}
 								ch <- prometheus.MustNewConstMetric(
-									consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
+									consumergroupUncomittedOffsets, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
 								)
 							} else {
 								plog.Errorf("No offset of topic %s partition %d, cannot get consumer group lag", topic, partition)
@@ -541,7 +560,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 							consumergroupCurrentOffsetSum, prometheus.GaugeValue, float64(currentOffsetSum), group.GroupId, topic,
 						)
 						ch <- prometheus.MustNewConstMetric(
-							consumergroupLagSum, prometheus.GaugeValue, float64(lagSum), group.GroupId, topic,
+							consumergroupUncommittedOffsetsSum, prometheus.GaugeValue, float64(lagSum), group.GroupId, topic,
 						)
 					}
 				}
@@ -559,6 +578,148 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	} else {
 		plog.Errorln("No valid broker, cannot get consumer group metrics")
 	}
+
+	calculateConsumerGroupLag := func() {
+		defer wg.Done()
+
+		admin, err := sarama.NewClusterAdminFromClient(e.client)
+		if err != nil {
+			plog.Errorf("Error creating cluster admin: %s", err.Error())
+		}
+		if admin == nil {
+			plog.Error("Failed to create cluster admin")
+			return
+		}
+
+		// Iterate over all group/topic/partitions
+		e.consumerGroupLagTable.mu.Lock()
+		for group, topics := range e.consumerGroupLagTable.iMap {
+			for topic, partitionMap := range topics {
+				var partitionKeys []int32
+				// Collect partitions to create ListConsumerGroupOffsets request
+				for key := range partitionMap {
+					partitionKeys = append(partitionKeys, key)
+				}
+
+				// response.Blocks is a map of topic to partition to offset
+				response, err := admin.ListConsumerGroupOffsets(group, map[string][]int32{
+					topic: partitionKeys,
+				})
+				if err != nil {
+					plog.Errorf("Error listing Consumer Group Offsets: %s", err.Error())
+				}
+				if response == nil {
+					plog.Error("Got nil response from ListConsumerGroupOffsets")
+					continue
+				}
+
+				for partition, offsets := range partitionMap {
+					if len(offsets) < 2 {
+						plog.Debugf("Insufficient data for lag calculation, continuing")
+						continue
+					}
+					if latestConsumedOffset, ok := response.Blocks[topic][partition]; ok {
+						/*
+							Sort offset keys so we know if we have an offset to use as a left bound in our calculation
+							If latestConsumedOffset < smallestMappedOffset then extrapolate
+							Else Find two offsets that bound latestConsumedOffset
+						*/
+						var producedOffsets []int64
+						for offsetKey := range offsets {
+							producedOffsets = append(producedOffsets, offsetKey)
+						}
+						sort.Slice(producedOffsets, func(i, j int) bool { return producedOffsets[i] < producedOffsets[j] })
+						if latestConsumedOffset.Offset < producedOffsets[0] {
+							// Because we do not have data points that bound the latestConsumedOffset we must use extrapolation
+							highestOffset := producedOffsets[len(producedOffsets)-1]
+							lowestOffset := producedOffsets[0]
+
+							px := float64(offsets[highestOffset].UnixNano()/1000000) -
+								float64(highestOffset-latestConsumedOffset.Offset)*
+									float64((offsets[highestOffset].Sub(offsets[lowestOffset])).Milliseconds())/float64(highestOffset-lowestOffset)
+							lagMillis := float64(time.Now().UnixNano()/1000000) - px
+							plog.Debugf("estimated lag for %s in ms: %f", group, lagMillis)
+
+							ch <- prometheus.MustNewConstMetric(lagDatapointUsedExtrapolation, prometheus.CounterValue, 1, group, topic, strconv.FormatInt(int64(partition), 10))
+							ch <- prometheus.MustNewConstMetric(topicPartitionLagMillis, prometheus.GaugeValue, lagMillis, group, topic, strconv.FormatInt(int64(partition), 10))
+
+						} else {
+							nextHigherOffset := getNextHigherOffset(producedOffsets, latestConsumedOffset.Offset)
+							nextLowerOffset := getNextLowerOffset(producedOffsets, latestConsumedOffset.Offset)
+							px := float64(offsets[nextHigherOffset].UnixNano()/1000000) -
+								float64(nextHigherOffset-latestConsumedOffset.Offset)*
+									float64((offsets[nextHigherOffset].Sub(offsets[nextLowerOffset])).Milliseconds())/float64(nextHigherOffset-nextLowerOffset)
+							lagMillis := float64(time.Now().UnixNano()/1000000) - px
+							plog.Debugf("estimated lag for %s in ms: %f", group, lagMillis)
+							ch <- prometheus.MustNewConstMetric(lagDatapointUsedInterpolation, prometheus.CounterValue, 1, group, topic, strconv.FormatInt(int64(partition), 10))
+							ch <- prometheus.MustNewConstMetric(topicPartitionLagMillis, prometheus.GaugeValue, lagMillis, group, topic, strconv.FormatInt(int64(partition), 10))
+
+						}
+
+					} else {
+						plog.Errorf("Could not get latest latest consumed offset for %s/%d", group, partition)
+					}
+				}
+			}
+		}
+		e.consumerGroupLagTable.mu.Unlock()
+	}
+
+	plog.Infof("Calculating consumer group lag")
+	wg.Add(1)
+	go calculateConsumerGroupLag()
+	wg.Wait()
+
+}
+
+func getNextHigherOffset(offsets []int64, k int64) int64 {
+	index := len(offsets) - 1
+	max := offsets[index]
+
+	for max >= k && index > 0 {
+		if offsets[index-1] < k {
+			return max
+		}
+		max = offsets[index]
+		index--
+	}
+	return max
+}
+
+func getNextLowerOffset(offsets []int64, k int64) int64 {
+	index := 0
+	min := offsets[index]
+	for min <= k && index < len(offsets)-1 {
+		if offsets[index+1] > k {
+			return min
+		}
+		min = offsets[index]
+		index++
+	}
+	return min
+}
+
+//Run iMap.Prune() on an interval (default 30 seconds). A new client is created
+//to avoid an issue where the client may be closed before Prune attempts to
+//use it.
+func (e *Exporter) RunPruner(quit chan struct{}, maxOffsets, interval int) {
+	ticker := time.NewTicker(time.Duration(interval) * time.Second)
+
+	for {
+		select {
+		case <-ticker.C:
+			client, err := sarama.NewClient(e.kafkaOpts.uri, e.config)
+			if err != nil {
+				plog.Errorln("Error Init Kafka Client")
+				panic(err)
+			}
+			e.consumerGroupLagTable.Prune(client, maxOffsets)
+			client.Close()
+		case <-quit:
+			ticker.Stop()
+			return
+		}
+	}
 }
 
 func init() {
@@ -570,29 +731,32 @@ func main() {
 	var (
 		listenAddress = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9308").String()
 		metricsPath   = kingpin.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
+		logSarama     = kingpin.Flag("log.enable-sarama", "Turn on Sarama logging.").Default("false").Bool()
 		topicFilter   = kingpin.Flag("topic.filter", "Regex that determines which topics to collect.").Default(".*").String()
 		groupFilter   = kingpin.Flag("group.filter", "Regex that determines which consumer groups to collect.").Default(".*").String()
-		logSarama     = kingpin.Flag("log.enable-sarama", "Turn on Sarama logging.").Default("false").Bool()
+		maxOffsets    = kingpin.Flag("max.offsets", "Maximum number of offsets to store in the interpolation table for a partition").Default("1000").Int()
+		pruneInterval = kingpin.Flag("prune.interval", "How frequently should the interpolation table be pruned, in seconds").Default("30").Int()
 
-		opts = kafkaOpts{}
+		kafkaConfig = kafkaOpts{}
 	)
-	kingpin.Flag("kafka.server", "Address (host:port) of Kafka server.").Default("kafka:9092").StringsVar(&opts.uri)
-	kingpin.Flag("sasl.enabled", "Connect using SASL/PLAIN.").Default("false").BoolVar(&opts.useSASL)
-	kingpin.Flag("sasl.handshake", "Only set this to false if using a non-Kafka SASL proxy.").Default("true").BoolVar(&opts.useSASLHandshake)
-	kingpin.Flag("sasl.username", "SASL user name.").Default("").StringVar(&opts.saslUsername)
-	kingpin.Flag("sasl.password", "SASL user password.").Default("").StringVar(&opts.saslPassword)
-	kingpin.Flag("sasl.mechanism", "The SASL SCRAM SHA algorithm sha256 or sha512 as mechanism").Default("").StringVar(&opts.saslMechanism)
-	kingpin.Flag("tls.enabled", "Connect using TLS.").Default("false").BoolVar(&opts.useTLS)
-	kingpin.Flag("tls.ca-file", "The optional certificate authority file for TLS client authentication.").Default("").StringVar(&opts.tlsCAFile)
-	kingpin.Flag("tls.cert-file", "The optional certificate file for client authentication.").Default("").StringVar(&opts.tlsCertFile)
-	kingpin.Flag("tls.key-file", "The optional key file for client authentication.").Default("").StringVar(&opts.tlsKeyFile)
-	kingpin.Flag("tls.insecure-skip-tls-verify", "If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure.").Default("false").BoolVar(&opts.tlsInsecureSkipTLSVerify)
-	kingpin.Flag("kafka.version", "Kafka broker version").Default(sarama.V2_0_0_0.String()).StringVar(&opts.kafkaVersion)
-	kingpin.Flag("use.consumelag.zookeeper", "if you need to use a group from zookeeper").Default("false").BoolVar(&opts.useZooKeeperLag)
-	kingpin.Flag("zookeeper.server", "Address (hosts) of zookeeper server.").Default("localhost:2181").StringsVar(&opts.uriZookeeper)
-	kingpin.Flag("kafka.labels", "Kafka cluster name").Default("").StringVar(&opts.labels)
-	kingpin.Flag("refresh.metadata", "Metadata refresh interval").Default("1m").StringVar(&opts.metadataRefreshInterval)
-	kingpin.Flag("concurrent.enable", "If true, all scrapes will trigger kafka operations otherwise, they will share results. WARN: This should be disabled on large clusters").Default("false").BoolVar(&opts.allowConcurrent)
+
+	kingpin.Flag("kafka.server", "Address (host:port) of Kafka server.").Default("kafka:9092").StringsVar(&kafkaConfig.uri)
+	kingpin.Flag("sasl.enabled", "Connect using SASL/PLAIN.").Default("false").BoolVar(&kafkaConfig.useSASL)
+	kingpin.Flag("sasl.handshake", "Only set this to false if using a non-Kafka SASL proxy.").Default("true").BoolVar(&kafkaConfig.useSASLHandshake)
+	kingpin.Flag("sasl.username", "SASL user name.").Default("").StringVar(&kafkaConfig.saslUsername)
+	kingpin.Flag("sasl.password", "SASL user password.").Default("").StringVar(&kafkaConfig.saslPassword)
+	kingpin.Flag("sasl.mechanism", "The SASL SCRAM SHA algorithm sha256 or sha512 as mechanism").Default("").StringVar(&kafkaConfig.saslMechanism)
+	kingpin.Flag("tls.enabled", "Connect using TLS.").Default("false").BoolVar(&kafkaConfig.useTLS)
+	kingpin.Flag("tls.ca-file", "The optional certificate authority file for TLS client authentication.").Default("").StringVar(&kafkaConfig.tlsCAFile)
+	kingpin.Flag("tls.cert-file", "The optional certificate file for client authentication.").Default("").StringVar(&kafkaConfig.tlsCertFile)
+	kingpin.Flag("tls.key-file", "The optional key file for client authentication.").Default("").StringVar(&kafkaConfig.tlsKeyFile)
+	kingpin.Flag("tls.insecure-skip-tls-verify", "If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure.").Default("false").BoolVar(&kafkaConfig.tlsInsecureSkipTLSVerify)
+	kingpin.Flag("kafka.version", "Kafka broker version").Default(sarama.V2_0_0_0.String()).StringVar(&kafkaConfig.kafkaVersion)
+	kingpin.Flag("use.consumelag.zookeeper", "if you need to use a group from zookeeper").Default("false").BoolVar(&kafkaConfig.useZooKeeperLag)
+	kingpin.Flag("zookeeper.server", "Address (hosts) of zookeeper server.").Default("localhost:2181").StringsVar(&kafkaConfig.uriZookeeper)
+	kingpin.Flag("kafka.labels", "Kafka cluster name").Default("").StringVar(&kafkaConfig.labels)
+	kingpin.Flag("refresh.metadata", "Metadata refresh interval").Default("1m").StringVar(&kafkaConfig.metadataRefreshInterval)
+	kingpin.Flag("concurrent.enable", "If true, all scrapes will trigger kafka operations otherwise, they will share results. WARN: This should be disabled on large clusters").Default("false").BoolVar(&kafkaConfig.allowConcurrent)
 
 	plog.AddFlags(kingpin.CommandLine)
 	kingpin.Version(version.Print("kafka_exporter"))
@@ -605,8 +769,8 @@ func main() {
 	labels := make(map[string]string)
 
 	// Protect against empty labels
-	if opts.labels != "" {
-		for _, label := range strings.Split(opts.labels, ",") {
+	if kafkaConfig.labels != "" {
+		for _, label := range strings.Split(kafkaConfig.labels, ",") {
 			splitted := strings.Split(label, "=")
 			if len(splitted) >= 2 {
 				labels[splitted[0]] = splitted[1]
@@ -677,21 +841,21 @@ func main() {
 		[]string{"consumergroup", "topic"}, labels,
 	)
 
-	consumergroupLag = prometheus.NewDesc(
-		prometheus.BuildFQName(namespace, "consumergroup", "lag"),
-		"Current Approximate Lag of a ConsumerGroup at Topic/Partition",
+	consumergroupUncomittedOffsets = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "consumergroup", "uncommitted_offsets"),
+		"Current Approximate count of uncommitted offsets for a ConsumerGroup at Topic/Partition",
 		[]string{"consumergroup", "topic", "partition"}, labels,
 	)
 
-	consumergroupLagZookeeper = prometheus.NewDesc(
-		prometheus.BuildFQName(namespace, "consumergroupzookeeper", "lag_zookeeper"),
-		"Current Approximate Lag(zookeeper) of a ConsumerGroup at Topic/Partition",
+	consumergroupUncommittedOffsetsZookeeper = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "consumergroupzookeeper", "uncommitted_offsets_zookeeper"),
+		"Current Approximate count of uncommitted offsets(zookeeper) for a ConsumerGroup at Topic/Partition",
 		[]string{"consumergroup", "topic", "partition"}, nil,
 	)
 
-	consumergroupLagSum = prometheus.NewDesc(
-		prometheus.BuildFQName(namespace, "consumergroup", "lag_sum"),
-		"Current Approximate Lag of a ConsumerGroup at Topic for all partitions",
+	consumergroupUncommittedOffsetsSum = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "consumergroup", "uncommitted_offsets_sum"),
+		"Current Approximate count of uncommitted offsets for a ConsumerGroup at Topic for all partitions",
 		[]string{"consumergroup", "topic"}, labels,
 	)
 
@@ -701,16 +865,39 @@ func main() {
 		[]string{"consumergroup"}, labels,
 	)
 
+	topicPartitionLagMillis = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "consumer_lag", "millis"),
+		"Current approximation of consumer lag for a ConsumerGroup at Topic/Partition",
+		[]string{"consumergroup", "topic", "partition"},
+		labels,
+	)
+
+	lagDatapointUsedInterpolation = prometheus.NewDesc(prometheus.BuildFQName(namespace, "consumer_lag", "interpolation"),
+		"Indicates that a consumer group lag estimation used interpolation",
+		[]string{"consumergroup", "topic", "partition"},
+		labels,
+	)
+
+	lagDatapointUsedExtrapolation = prometheus.NewDesc(prometheus.BuildFQName(namespace, "consumer_lag", "extrapolation"),
+		"Indicates that a consumer group lag estimation used extrapolation",
+		[]string{"consumergroup", "topic", "partition"},
+		labels,
+	)
+
 	if *logSarama {
 		sarama.Logger = log.New(os.Stdout, "[sarama] ", log.LstdFlags)
 	}
 
-	exporter, err := NewExporter(opts, *topicFilter, *groupFilter)
+	exporter, err := NewExporter(kafkaConfig, *topicFilter, *groupFilter)
 	if err != nil {
 		plog.Fatalln(err)
 	}
 	defer exporter.client.Close()
 	prometheus.MustRegister(exporter)
+
+	quitChannel := make(chan struct{})
+	go exporter.RunPruner(quitChannel, *maxOffsets, *pruneInterval)
+	defer close(quitChannel)
 
 	http.Handle(*metricsPath, promhttp.Handler())
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
