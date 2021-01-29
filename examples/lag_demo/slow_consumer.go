@@ -25,7 +25,7 @@ func slowConsumer(wg *sync.WaitGroup) {
 		plog.Fatalf("Error creating consumer group client: %v", err)
 	}
 
-	topics := []string{"test"}
+	topics := []string{"foo"}
 
 	wg.Add(1)
 	go func() {

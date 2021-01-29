@@ -545,42 +545,36 @@ func (e *Exporter) metricsForConsumerGroup(broker *sarama.Broker, ch chan<- prom
 					for partition, offsetFetchResponseBlock := range partitions {
 						kerr := offsetFetchResponseBlock.Err
 						if kerr != sarama.ErrNoError {
-							plog.Errorf("Error for  partition %d :%v", partition, err.Error())
+							plog.Errorf("Error for partition %d :%v", partition, err.Error())
 							continue
 						}
-						//currentOffset := offsetFetchResponseBlock.Offset
-						currentOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
+						currentOffset := offsetFetchResponseBlock.Offset
 						currentOffsetSum += currentOffset
-						if err != nil {
-							plog.Errorf("Cannot get current offset of topic %s partition %d: %v", topic, partition, err)
-						}
+
 						ch <- prometheus.MustNewConstMetric(
 							consumergroupCurrentOffset, prometheus.GaugeValue, float64(currentOffset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
 						)
 						e.mu.Lock()
-						if _, ok := e.consumerGroupLagTable.iMap[group.GroupId][topic][partition]; ok {
-							// Get and insert the next offset to be produced into the interpolation map
-							nextOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
-							if err != nil {
-							}
-							e.consumerGroupLagTable.createOrUpdate(group.GroupId, topic, partition, nextOffset)
+						// Get and insert the next offset to be produced into the interpolation map
+						nextOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
+						if err != nil {
+							plog.Errorf("Cannot get next offset for topic %s partition %d: %v", topic, partition, err)
+						}
+						e.consumerGroupLagTable.createOrUpdate(group.GroupId, topic, partition, nextOffset)
 
-							// If the topic is consumed by that consumer group, but no offset associated with the partition
-							// forcing lag to -1 to be able to alert on that
-							var lag int64
-							if offsetFetchResponseBlock.Offset == -1 {
-								lag = -1
-							} else {
-								lag = 0 // TODO: make this real once refactor is complete. Consider complete rework of this entire function so that it focuses on consumers and not consumer groups
-								lagSum += lag
-							}
-							ch <- prometheus.MustNewConstMetric(
-								consumergroupUncomittedOffsets, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
-							)
+						// If the topic is consumed by that consumer group, but no offset associated with the partition
+						// forcing lag to -1 to be able to alert on that
+						var lag int64
+						if currentOffset == -1 {
+							lag = -1
 						} else {
-							plog.Errorf("No offset of topic %s partition %d, cannot get consumer group lag", topic, partition)
+							lag = nextOffset - currentOffset
+							lagSum += lag
 						}
 						e.mu.Unlock()
+						ch <- prometheus.MustNewConstMetric(
+							consumergroupUncomittedOffsets, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
+						)
 					}
 					ch <- prometheus.MustNewConstMetric(
 						consumergroupCurrentOffsetSum, prometheus.GaugeValue, float64(currentOffsetSum), group.GroupId, topic,
