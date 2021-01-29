@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func slowProducer(wg sync.WaitGroup) {
+func slowProducer(wg *sync.WaitGroup) {
 	defer wg.Done()
 	producer, err := sarama.NewAsyncProducer([]string{"localhost:9092"}, nil)
 	if err != nil {

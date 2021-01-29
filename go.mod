@@ -4,14 +4,15 @@ go 1.14
 
 require (
 	github.com/Shopify/sarama v1.27.2
+	github.com/alecthomas/units v0.0.0-20201120081800-1786d5ef83d4 // indirect
 	github.com/krallistic/kazoo-go v0.0.0-20170526135507-a15279744f4e
-	github.com/monitoring-mixins/mixtool v0.0.0-20201127170310-63dca667103c // indirect
-	github.com/prometheus/client_golang v1.7.1
-	github.com/prometheus/common v0.14.0
+	github.com/prometheus/client_golang v1.9.0
+	github.com/prometheus/common v0.15.0
 	github.com/rcrowley/go-metrics v0.0.0-20200313005456-10cdbea86bc0
 	github.com/samuel/go-zookeeper v0.0.0-20200724154423-2164a8ac840e // indirect
 	github.com/xdg/scram v0.0.0-20180814205039-7eeb5667e42c
-	golang.org/x/sys v0.0.0-20200918174421-af09f7315aff // indirect
-	google.golang.org/protobuf v1.24.0 // indirect
+	golang.org/x/net v0.0.0-20201224014010-6772e930b67b // indirect
+	golang.org/x/sys v0.0.0-20210108172913-0df2131ae363 // indirect
+	google.golang.org/protobuf v1.25.0 // indirect
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 )

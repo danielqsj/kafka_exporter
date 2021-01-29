@@ -15,7 +15,7 @@ type Consumer struct {
 	ready chan bool
 }
 
-func slowConsumer(wg sync.WaitGroup) {
+func slowConsumer(wg *sync.WaitGroup) {
 	defer wg.Done()
 	consumer := Consumer{ready: make(chan bool)}
 	ctx := context.Background()
