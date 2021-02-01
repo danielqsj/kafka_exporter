@@ -1,13 +1,12 @@
 kafka_exporter
 ==============
 
-[![Build Status](https://travis-ci.org/danielqsj/kafka_exporter.svg?branch=master)](https://travis-ci.org/danielqsj/kafka_exporter)[![Docker Pulls](https://img.shields.io/docker/pulls/danielqsj/kafka-exporter.svg)](https://hub.docker.com/r/danielqsj/kafka-exporter)[![Go Report Card](https://goreportcard.com/badge/github.com/danielqsj/kafka_exporter)](https://goreportcard.com/report/github.com/danielqsj/kafka_exporter)[![Language](https://img.shields.io/badge/language-Go-red.svg)](https://github.com/danielqsj/kafka-exporter)[![GitHub release](https://img.shields.io/badge/release-1.2.0-green.svg)](https://github.com/alibaba/derrick/releases)[![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
+[![Build Status](https://travis-ci.com/davidmparrott/kafka_exporter.svg?branch=master)](https://travis-ci.org/danielqsj/kafka_exporter)[![Docker Pulls](https://img.shields.io/docker/pulls/dparrott/kafka-exporter.svg)](https://hub.docker.com/r/dparrott/kafka-exporter)[![Go Report Card](https://goreportcard.com/badge/github.com/dparrott/kafka_exporter)](https://goreportcard.com/report/github.com/dparrott/kafka_exporter)[![Language](https://img.shields.io/badge/language-Go-red.svg)](https://github.com/dparrott/kafka-exporter)[![GitHub release](https://img.shields.io/badge/release-1.2.0-green.svg)](https://github.com/alibaba/derrick/releases)[![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
 
 Kafka exporter for Prometheus. For other metrics from Kafka, have a look at the [JMX exporter](https://github.com/prometheus/jmx_exporter).
 
 Table of Contents
 -----------------
-
 -	[Compatibility](#compatibility)
 -	[Dependency](#dependency)
 -	[Download](#download)
@@ -81,7 +80,7 @@ kafka_exporter --kafka.server=kafka:9092 [--kafka.server=another-server ...]
 ### Run Docker Image
 
 ```
-docker run -ti --rm -p 9308:9308 danielqsj/kafka-exporter --kafka.server=kafka:9092 [--kafka.server=another-server ...]
+docker run -ti --rm -p 9308:9308 dparrott/kafka-exporter --kafka.server=kafka:9092 [--kafka.server=another-server ...]
 ```
 
 Flags
