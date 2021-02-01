@@ -1,5 +1,5 @@
 FROM        quay.io/prometheus/busybox:latest
-MAINTAINER  Daniel Qian <qsj.daniel@gmail.com>
+MAINTAINER  David Parrott <david@davidmparrott.com>
 
 COPY kafka_exporter /bin/kafka_exporter
 
