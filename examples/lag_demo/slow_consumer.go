@@ -15,7 +15,7 @@ type Consumer struct {
 	ready chan bool
 }
 
-func slowConsumer(wg sync.WaitGroup) {
+func slowConsumer(wg *sync.WaitGroup) {
 	defer wg.Done()
 	consumer := Consumer{ready: make(chan bool)}
 	ctx := context.Background()
@@ -25,7 +25,7 @@ func slowConsumer(wg sync.WaitGroup) {
 		plog.Fatalf("Error creating consumer group client: %v", err)
 	}
 
-	topics := []string{"test"}
+	topics := []string{"foo"}
 
 	wg.Add(1)
 	go func() {

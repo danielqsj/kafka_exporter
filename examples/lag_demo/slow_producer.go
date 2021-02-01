@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func slowProducer(wg sync.WaitGroup) {
+func slowProducer(wg *sync.WaitGroup) {
 	defer wg.Done()
 	producer, err := sarama.NewAsyncProducer([]string{"localhost:9092"}, nil)
 	if err != nil {
@@ -31,7 +31,7 @@ func slowProducer(wg sync.WaitGroup) {
 ProducerLoop:
 	for {
 		select {
-		case producer.Input() <- &sarama.ProducerMessage{Topic: "test", Key: nil, Value: sarama.StringEncoder("testing 123")}:
+		case producer.Input() <- &sarama.ProducerMessage{Topic: "foo", Key: nil, Value: sarama.StringEncoder("testing 123")}:
 			enqueued++
 			counter++
 			if counter >= 50 {
