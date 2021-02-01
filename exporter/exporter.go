@@ -711,7 +711,7 @@ func (e *Exporter) RunPruner(quit chan struct{}, maxOffsets, interval int) {
 		case <-ticker.C:
 			client, err := sarama.NewClient(e.kafkaOpts.Uri, e.config)
 			if err != nil {
-				plog.Errorf("Error Init Kafka Client: ", err.Error())
+				plog.Errorf("Error Init Kafka Client: %s", err.Error())
 				panic(err)
 			}
 			e.consumerGroupLagTable.Prune(client, maxOffsets)
