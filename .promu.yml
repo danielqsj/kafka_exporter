@@ -1,5 +1,5 @@
 repository:
-    path: github.com/danielqsj/kafka_exporter
+    path: github.com/davidmparrott/kafka_exporter
 build:
     flags: -a -tags netgo
     ldflags: |
