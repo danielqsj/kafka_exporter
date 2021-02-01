@@ -8,4 +8,4 @@ RUN go build -o /server
 FROM golang:alpine
 EXPOSE     9308
 COPY --from=build /server /
-CMD [ "/server" ]
+ENTRYPOINT [ "/server" ]
