@@ -43,7 +43,7 @@ Dependency
 Download
 --------
 
-Binary can be downloaded from [Releases](https://github.com/danielqsj/kafka_exporter/releases) page.
+Binary can be downloaded from [Releases](https://github.com/davidmparrott/kafka_exporter/releases) page.
 
 Compile
 -------
@@ -64,10 +64,10 @@ Docker Hub Image
 ----------------
 
 ```shell
-docker pull danielqsj/kafka-exporter:latest
+docker pull dparrott/kafka-exporter:latest
 ```
 
-It can be used directly instead of having to build the image yourself. ([Docker Hub danielqsj/kafka-exporter](https://hub.docker.com/r/danielqsj/kafka-exporter)\)
+It can be used directly instead of having to build the image yourself [Docker Hub dparrott/kafka-exporter](https://hub.docker.com/r/dparrott/kafka-exporter)
 
 Run
 ---
@@ -261,14 +261,14 @@ Pruning of the interpolation table happens on a separate thread and thread safet
 Contribute
 ----------
 
-If you like Kafka Exporter, please give me a star. This will help more people know Kafka Exporter.
+To contribute to the upstream project, please open a [pull request](https://github.com/danielqsj/kafka_exporter/pulls).
 
-Please feel free to send me [pull requests](https://github.com/danielqsj/kafka_exporter/pulls).
+To contribute to this fork please open a [pull request here](https://github.com/davidmparrott/kafka_exporter/pulls)
 
 Donation
 --------
 
-Your donation will encourage me to continue to improve Kafka Exporter. Support Alipay donation.
+To donate to the developer of the project this is forked from please use the donation link below
 
 ![](https://github.com/danielqsj/kafka_exporter/raw/master/alipay.jpg)
 
