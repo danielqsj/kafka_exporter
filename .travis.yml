@@ -1,18 +1,7 @@
-sudo: required
-
 services:
 - docker
 
 language: go
 
 go:
-- 1.14
-
-after_success:
-- if [ "$TRAVIS_PULL_REQUEST" == "false" ]; then
-  make docker;
-  make push;
-  fi
-- if [[ -n "$TRAVIS_TAG" ]]; then
-  make crossbuild release;
-  fi
+- 1.15
