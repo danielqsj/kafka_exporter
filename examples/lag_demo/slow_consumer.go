@@ -44,15 +44,15 @@ func slowConsumer(wg *sync.WaitGroup) {
 	}()
 
 	<-consumer.ready // Await till the consumer has been set up
-	plog.Infof("Sarama consumer up and running!...")
+	plog.Info("Sarama consumer up and running!...")
 
 	sigterm := make(chan os.Signal, 1)
 	signal.Notify(sigterm, syscall.SIGINT, syscall.SIGTERM)
 	select {
 	case <-ctx.Done():
-		plog.Infof("terminating: context cancelled")
+		plog.Info("terminating: context cancelled")
 	case <-sigterm:
-		plog.Infof("terminating: via signal")
+		plog.Info("terminating: via signal")
 	}
 	wg.Wait()
 	if err = client.Close(); err != nil {
@@ -74,7 +74,7 @@ func (consumer *Consumer) Cleanup(sarama.ConsumerGroupSession) error {
 
 // ConsumeClaim must start a consumer loop of ConsumerGroupClaim's Messages().
 func (consumer *Consumer) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	plog.Infof("Consuming from test topic")
+	plog.Info("Consuming from test topic")
 	// NOTE:
 	// Do not move the code below to a goroutine.
 	// The `ConsumeClaim` itself is called within a goroutine, see:
@@ -83,7 +83,7 @@ func (consumer *Consumer) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 	for message := range claim.Messages() {
 		counter++
 		if counter >= 5000 {
-			plog.Infof("Pausing consumer for 50 seconds")
+			plog.Info("Pausing consumer for 50 seconds")
 			time.Sleep(50 * time.Second)
 			counter = 0
 		}

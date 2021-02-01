@@ -37,7 +37,7 @@ ProducerLoop:
 			if counter >= 50 {
 				counter = 0
 				time.Sleep(1 * time.Second)
-				plog.Debugf("Pausing producer for one second to throttle message production")
+				plog.Debug("Pausing producer for one second to throttle message production")
 			}
 		case err := <-producer.Errors():
 			plog.Infof("Failed to produce message", err)

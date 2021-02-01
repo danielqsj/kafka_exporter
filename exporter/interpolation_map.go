@@ -19,9 +19,9 @@ type interpolationMap struct {
 // that contains more offset entries than maxNumberOfOffsets will have the oldest
 // offsets pruned
 func (i *interpolationMap) Prune(client sarama.Client, maxOffsets int) {
-	plog.Debugf("Pruning iMap data")
+	plog.Debug("Pruning iMap data")
 	if i.iMap == nil {
-		plog.Infof("Interpolation map is nil, nothing to prune")
+		plog.Info("Interpolation map is nil, nothing to prune")
 		return
 	}
 	admin, err := sarama.NewClusterAdminFromClient(client)
@@ -48,7 +48,7 @@ func (i *interpolationMap) Prune(client sarama.Client, maxOffsets int) {
 	}
 
 	i.mu.Lock()
-	plog.Debugf("Interpolation map locked for pruning")
+	plog.Debug("Interpolation map locked for pruning")
 	start := time.Now()
 
 	for group, _ := range i.iMap {

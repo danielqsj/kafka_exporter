@@ -367,7 +367,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 		plog.Errorln("No valid broker, cannot get consumer group metrics")
 	}
 
-	plog.Infof("Calculating consumer group lag")
+	plog.Info("Calculating consumer group lag")
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -623,7 +623,7 @@ func (e *Exporter) metricsForLag(ch chan<- prometheus.Metric) {
 
 			for partition, offsets := range partitionMap {
 				if len(offsets) < 2 {
-					plog.Debugf("Insufficient data for lag calculation, continuing")
+					plog.Debug("Insufficient data for lag calculation, continuing")
 					continue
 				}
 				if latestConsumedOffset, ok := response.Blocks[topic][partition]; ok {
@@ -711,7 +711,7 @@ func (e *Exporter) RunPruner(quit chan struct{}, maxOffsets, interval int) {
 		case <-ticker.C:
 			client, err := sarama.NewClient(e.kafkaOpts.Uri, e.config)
 			if err != nil {
-				plog.Errorln("Error Init Kafka Client")
+				plog.Errorf("Error Init Kafka Client: ", err.Error())
 				panic(err)
 			}
 			e.consumerGroupLagTable.Prune(client, maxOffsets)
