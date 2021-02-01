@@ -1,6 +1,6 @@
-module github.com/danielqsj/kafka_exporter
+module github.com/davidmparrott/kafka_exporter
 
-go 1.14
+go 1.15
 
 require (
 	github.com/Shopify/sarama v1.27.2
