@@ -40,7 +40,7 @@ ProducerLoop:
 				plog.Debug("Pausing producer for one second to throttle message production")
 			}
 		case err := <-producer.Errors():
-			plog.Infof("Failed to produce message", err)
+			plog.Infof("Error attempting to produce message: %s", err)
 			producerErrors++
 		case <-signals:
 			break ProducerLoop
