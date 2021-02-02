@@ -1,7 +1,7 @@
 kafka_exporter
 ==============
 
-[![Build Status](https://travis-ci.com/davidmparrott/kafka_exporter.svg?branch=master)](https://travis-ci.org/danielqsj/kafka_exporter)[![Docker Pulls](https://img.shields.io/docker/pulls/dparrott/kafka-exporter.svg)](https://hub.docker.com/r/dparrott/kafka-exporter)[![Language](https://img.shields.io/badge/language-Go-red.svg)](https://github.com/dparrott/kafka-exporter)[![GitHub release](https://img.shields.io/badge/release-1.2.0-green.svg)](https://github.com/alibaba/derrick/releases)[![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
+[![Build Status](https://travis-ci.com/davidmparrott/kafka_exporter.svg?branch=master)](https://travis-ci.org/danielqsj/kafka_exporter) [![Docker Pulls](https://img.shields.io/docker/pulls/dparrott/kafka-exporter.svg)](https://hub.docker.com/r/dparrott/kafka-exporter) [![Language](https://img.shields.io/badge/language-Go-red.svg)](https://github.com/dparrott/kafka-exporter) [![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
 
 Kafka exporter for Prometheus. For other metrics from Kafka, have a look at the [JMX exporter](https://github.com/prometheus/jmx_exporter).
 
