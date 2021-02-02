@@ -4,7 +4,6 @@ go 1.15
 
 require (
 	github.com/Shopify/sarama v1.27.2
-	github.com/gojp/goreportcard v0.0.0-20210127091035-7a8a1ebca86e // indirect
 	github.com/krallistic/kazoo-go v0.0.0-20170526135507-a15279744f4e
 	github.com/prometheus/client_golang v1.9.0
 	github.com/prometheus/common v0.15.0
