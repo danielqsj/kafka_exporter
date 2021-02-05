@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/Shopify/sarama"
 	"github.com/davidmparrott/kafka_exporter/exporter"
+	klog "github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	plog "github.com/prometheus/common/log"
@@ -26,10 +27,7 @@ func main() {
 		logSarama     = kingpin.Flag("log.enable-sarama", "Turn on Sarama logging.").Default("false").Bool()
 		topicFilter   = kingpin.Flag("topic.filter", "Regex that determines which topics to collect.").Default(".*").String()
 		groupFilter   = kingpin.Flag("group.filter", "Regex that determines which consumer groups to collect.").Default(".*").String()
-		maxOffsets    = kingpin.Flag("max.offsets", "Maximum number of offsets to store in the interpolation table for a partition").Default("1000").Int()
-		pruneInterval = kingpin.Flag("prune.interval", "How frequently should the interpolation table be pruned, in seconds").Default("30").Int()
-
-		kafkaConfig = exporter.KafkaOpts{}
+		kafkaConfig   = exporter.Options{}
 	)
 
 	kingpin.Flag("kafka.server", "Address (host:port) of Kafka server.").Default("kafka:9092").StringsVar(&kafkaConfig.Uri)
@@ -49,6 +47,8 @@ func main() {
 	kingpin.Flag("kafka.labels", "Kafka cluster name").Default("").StringVar(&kafkaConfig.Labels)
 	kingpin.Flag("refresh.metadata", "Metadata refresh interval").Default("1m").StringVar(&kafkaConfig.MetadataRefreshInterval)
 	kingpin.Flag("concurrent.enable", "If true, all scrapes will trigger kafka operations otherwise, they will share results. WARN: This should be disabled on large clusters").Default("false").BoolVar(&kafkaConfig.AllowConcurrent)
+	kingpin.Flag("max.offsets", "Maximum number of offsets to store in the interpolation table for a partition").Default("1000").IntVar(&kafkaConfig.MaxOffsets)
+	kingpin.Flag("prune.interval", "How frequently should the interpolation table be pruned, in seconds").Default("30").IntVar(&kafkaConfig.PruneIntervalSeconds)
 
 	plog.AddFlags(kingpin.CommandLine)
 	kingpin.Version(version.Print("kafka_exporter"))
@@ -62,7 +62,10 @@ func main() {
 		sarama.Logger = log.New(os.Stdout, "[sarama] ", log.LstdFlags)
 	}
 
-	newExporter, err := exporter.NewExporter(kafkaConfig, *topicFilter, *groupFilter)
+	w := klog.NewSyncWriter(os.Stdout)
+	logger := klog.NewLogfmtLogger(w)
+
+	newExporter, err := exporter.New(logger, kafkaConfig, *topicFilter, *groupFilter)
 	if err != nil {
 		plog.Fatalln(err)
 	}
@@ -70,7 +73,7 @@ func main() {
 	prometheus.MustRegister(newExporter)
 
 	quitChannel := make(chan struct{})
-	go newExporter.RunPruner(quitChannel, *maxOffsets, *pruneInterval)
+	go newExporter.RunPruner(quitChannel)
 	defer close(quitChannel)
 
 	http.Handle(*metricsPath, promhttp.Handler())
