@@ -2,7 +2,8 @@ package exporter
 
 import (
 	"github.com/Shopify/sarama"
-	plog "github.com/prometheus/common/log"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"sort"
 	"sync"
 	"time"
@@ -18,18 +19,18 @@ type interpolationMap struct {
 // from the cluster, the Interpolation map may still have cached offsets. Any partition
 // that contains more offset entries than maxNumberOfOffsets will have the oldest
 // offsets pruned
-func (i *interpolationMap) Prune(client sarama.Client, maxOffsets int) {
-	plog.Debug("Pruning iMap data")
+func (i *interpolationMap) Prune(logger log.Logger, client sarama.Client, maxOffsets int) {
+	level.Debug(logger).Log("msg", "pruning iMap data", "maxOffsets", maxOffsets)
 	if i.iMap == nil {
-		plog.Info("Interpolation map is nil, nothing to prune")
+		level.Info(logger).Log("msg", "Interpolation map is nil, nothing to prune")
 		return
 	}
 	admin, err := sarama.NewClusterAdminFromClient(client)
 	if err != nil {
-		plog.Errorf("Error creating cluster admin: %s", err.Error())
+		level.Error(logger).Log("msg", "Error creating cluster admin", "err", err.Error())
 	}
 	if admin == nil {
-		plog.Error("Failed to create cluster admin")
+		level.Error(logger).Log("msg", "Failed to create cluster admin")
 		return
 	}
 
@@ -48,7 +49,7 @@ func (i *interpolationMap) Prune(client sarama.Client, maxOffsets int) {
 	}
 
 	i.mu.Lock()
-	plog.Debug("Interpolation map locked for pruning")
+	level.Debug(logger).Log("msg", "iMap locked for pruning")
 	start := time.Now()
 
 	for group, _ := range i.iMap {
@@ -69,6 +70,7 @@ func (i *interpolationMap) Prune(client sarama.Client, maxOffsets int) {
 					}
 					sort.Slice(offsetKeys, func(i, j int) bool { return offsetKeys[i] < offsetKeys[j] })
 					offsetKeys = offsetKeys[0 : len(offsetKeys)-maxOffsets]
+					level.Debug(logger).Log("msg", "pruning offsets", "count", len(offsetKeys), "group", group, "topic", topic, "partition", partition)
 					for _, offsetToRemove := range offsetKeys {
 						delete(i.iMap[group][topic][partition], offsetToRemove)
 					}
@@ -76,7 +78,7 @@ func (i *interpolationMap) Prune(client sarama.Client, maxOffsets int) {
 			}
 		}
 	}
-	plog.Debugf("Pruning complete in %s", time.Since(start).String())
+	level.Debug(logger).Log("msg", "pruning complete", "duration", time.Since(start).String())
 	i.mu.Unlock()
 }
 
