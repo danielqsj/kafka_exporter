@@ -7,12 +7,15 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"encoding/json"
 
 	"github.com/Shopify/sarama"
 	kazoo "github.com/krallistic/kazoo-go"
@@ -47,6 +50,15 @@ var (
 	consumergroupMembers               *prometheus.Desc
 )
 
+var (
+	tokenExpiredTime       time.Time
+	curAccessToken         string
+	saslOAuthTokenEndpoint string
+	saslOAuthScope         string
+	saslOAuthClientID      string
+	saslOAuthClientSecret  string
+)
+
 // Exporter collects Kafka stats from the given server and exports them using
 // the prometheus metrics package.
 type Exporter struct {
@@ -62,6 +74,7 @@ type Exporter struct {
 
 type kafkaOpts struct {
 	uri                      []string
+	useSASLMechanism         string
 	useSASL                  bool
 	useSASLHandshake         bool
 	saslUsername             string
@@ -77,6 +90,14 @@ type kafkaOpts struct {
 	uriZookeeper             []string
 	labels                   string
 	metadataRefreshInterval  string
+}
+
+// TokenResp is reponse for OAuth token request
+type TokenResp struct {
+	AccessToken string `json:"access_token"`
+	ExpiresIn   int    `json:"expires_in"`
+	TokenType   string `json:"token_type"`
+	Scope       string `json:"scope"`
 }
 
 // CanReadCertAndKey returns true if the certificate and key files already exists,
@@ -113,6 +134,51 @@ func canReadFile(path string) bool {
 	return true
 }
 
+//TokenProvider is for sarama OAuth
+type TokenProvider struct {
+}
+
+// Token is implementation of interface TokenProvider
+func (t *TokenProvider) Token() (*sarama.AccessToken, error) {
+	if time.Now().Sub(tokenExpiredTime) > 0 {
+
+		form := url.Values{}
+		form.Add("grant_type", "client_credentials")
+		form.Add("scope", saslOAuthScope)
+
+		// Create a new request using http
+		req, err := http.NewRequest("POST", saslOAuthTokenEndpoint, strings.NewReader(form.Encode()))
+
+		// add authorization header to the req
+		req.SetBasicAuth(saslOAuthClientID, saslOAuthClientSecret)
+		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+
+		// Send req using http Client
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			plog.Errorln("Error on response.")
+			panic(err)
+		}
+
+		body, _ := ioutil.ReadAll(resp.Body)
+
+		plog.Infoln("Token Response", string([]byte(body)))
+
+		result := new(TokenResp)
+		errDes := json.Unmarshal([]byte(body), result)
+		if errDes != nil {
+			plog.Errorln("Error on deserializing json.")
+			panic(err)
+		}
+
+		curAccessToken = result.AccessToken
+		tokenExpiredTime = time.Now().Add(time.Second * time.Duration(result.ExpiresIn-10))
+	}
+
+	return &sarama.AccessToken{Token: curAccessToken}, nil
+}
+
 // NewExporter returns an initialized Exporter.
 func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Exporter, error) {
 	var zookeeperClient *kazoo.Kazoo
@@ -143,12 +209,17 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		config.Net.SASL.Enable = true
 		config.Net.SASL.Handshake = opts.useSASLHandshake
 
-		if opts.saslUsername != "" {
-			config.Net.SASL.User = opts.saslUsername
-		}
+		if opts.useSASLMechanism == "oauth" {
+			config.Net.SASL.Mechanism = sarama.SASLTypeOAuth
+			config.Net.SASL.TokenProvider = &TokenProvider{}
+		} else if opts.useSASLMechanism == "plain" {
+			if opts.saslUsername != "" {
+				config.Net.SASL.User = opts.saslUsername
+			}
 
-		if opts.saslPassword != "" {
-			config.Net.SASL.Password = opts.saslPassword
+			if opts.saslPassword != "" {
+				config.Net.SASL.Password = opts.saslPassword
+			}
 		}
 	}
 
@@ -493,7 +564,8 @@ func main() {
 		opts = kafkaOpts{}
 	)
 	kingpin.Flag("kafka.server", "Address (host:port) of Kafka server.").Default("kafka:9092").StringsVar(&opts.uri)
-	kingpin.Flag("sasl.enabled", "Connect using SASL/PLAIN.").Default("false").BoolVar(&opts.useSASL)
+	kingpin.Flag("sasl.mechanism", "SASL Mechanism, options: plain/oauth").Default("plain").StringVar(&opts.useSASLMechanism)
+	kingpin.Flag("sasl.enabled", "Connect using SASL.").Default("false").BoolVar(&opts.useSASL)
 	kingpin.Flag("sasl.handshake", "Only set this to false if using a non-Kafka SASL proxy.").Default("true").BoolVar(&opts.useSASLHandshake)
 	kingpin.Flag("sasl.username", "SASL user name.").Default("").StringVar(&opts.saslUsername)
 	kingpin.Flag("sasl.password", "SASL user password.").Default("").StringVar(&opts.saslPassword)
@@ -508,6 +580,12 @@ func main() {
 	kingpin.Flag("zookeeper.server", "Address (hosts) of zookeeper server.").Default("localhost:2181").StringsVar(&opts.uriZookeeper)
 	kingpin.Flag("kafka.labels", "Kafka cluster name").Default("").StringVar(&opts.labels)
 	kingpin.Flag("refresh.metadata", "Metadata refresh interval").Default("30s").StringVar(&opts.metadataRefreshInterval)
+
+	//OAUTHBEARER
+	kingpin.Flag("sasl.oauth.token-endpoint", "SASL/OAUTHBEARER token endpoint").Default("").StringVar(&saslOAuthTokenEndpoint)
+	kingpin.Flag("sasl.oauth.scope", "SASL/OAUTHBEARER scope").Default("").StringVar(&saslOAuthScope)
+	kingpin.Flag("sasl.oauth.client-id", "SASL/OAUTHBEARER client id").Default("").StringVar(&saslOAuthClientID)
+	kingpin.Flag("sasl.oauth.client-secret", "SASL/OAUTHBEARER client secret").Default("").StringVar(&saslOAuthClientSecret)
 
 	plog.AddFlags(kingpin.CommandLine)
 	kingpin.Version(version.Print("kafka_exporter"))
