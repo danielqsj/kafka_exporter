@@ -11,6 +11,9 @@ metadata:
     helm.sh/chart: {{ include "kafka-exporter.chart" . }}
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/managed-by: {{ .Release.Service }}
+    {{- if .Values.labels -}}
+    {{ .Values.labels | toYaml | nindent 4 -}}
+    {{- end }}
     {{- if .Values.prometheus.serviceMonitor.additionalLabels }}
 {{ toYaml .Values.prometheus.serviceMonitor.additionalLabels | indent 4 -}}
     {{- end }}
