@@ -1,13 +1,12 @@
 kafka_exporter
 ==============
 
-[![Build Status](https://travis-ci.org/danielqsj/kafka_exporter.svg?branch=master)](https://travis-ci.org/danielqsj/kafka_exporter)[![Docker Pulls](https://img.shields.io/docker/pulls/danielqsj/kafka-exporter.svg)](https://hub.docker.com/r/danielqsj/kafka-exporter)[![Go Report Card](https://goreportcard.com/badge/github.com/danielqsj/kafka_exporter)](https://goreportcard.com/report/github.com/danielqsj/kafka_exporter)[![Language](https://img.shields.io/badge/language-Go-red.svg)](https://github.com/danielqsj/kafka-exporter)[![GitHub release](https://img.shields.io/badge/release-1.2.0-green.svg)](https://github.com/alibaba/derrick/releases)[![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
+[![Build Status](https://travis-ci.com/davidmparrott/kafka_exporter.svg?branch=master)](https://travis-ci.org/danielqsj/kafka_exporter) [![Docker Pulls](https://img.shields.io/docker/pulls/dparrott/kafka-exporter.svg)](https://hub.docker.com/r/dparrott/kafka-exporter) [![Language](https://img.shields.io/badge/language-Go-red.svg)](https://github.com/dparrott/kafka-exporter) [![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
 
 Kafka exporter for Prometheus. For other metrics from Kafka, have a look at the [JMX exporter](https://github.com/prometheus/jmx_exporter).
 
 Table of Contents
 -----------------
-
 -	[Compatibility](#compatibility)
 -	[Dependency](#dependency)
 -	[Download](#download)
@@ -39,12 +38,11 @@ Dependency
 -	[Prometheus](https://prometheus.io)
 -	[Sarama](https://shopify.github.io/sarama)
 -	[Golang](https://golang.org)
--	[Dep](https://github.com/golang/dep)
 
 Download
 --------
 
-Binary can be downloaded from [Releases](https://github.com/danielqsj/kafka_exporter/releases) page.
+Binary can be downloaded from [Releases](https://github.com/davidmparrott/kafka_exporter/releases) page.
 
 Compile
 -------
@@ -65,10 +63,10 @@ Docker Hub Image
 ----------------
 
 ```shell
-docker pull danielqsj/kafka-exporter:latest
+docker pull dparrott/kafka-exporter:latest
 ```
 
-It can be used directly instead of having to build the image yourself. ([Docker Hub danielqsj/kafka-exporter](https://hub.docker.com/r/danielqsj/kafka-exporter)\)
+It can be used directly instead of having to build the image yourself [Docker Hub dparrott/kafka-exporter](https://hub.docker.com/r/dparrott/kafka-exporter)
 
 Run
 ---
@@ -82,7 +80,7 @@ kafka_exporter --kafka.server=kafka:9092 [--kafka.server=another-server ...]
 ### Run Docker Image
 
 ```
-docker run -ti --rm -p 9308:9308 danielqsj/kafka-exporter --kafka.server=kafka:9092 [--kafka.server=another-server ...]
+docker run -ti --rm -p 9308:9308 dparrott/kafka-exporter --kafka.server=kafka:9092 [--kafka.server=another-server ...]
 ```
 
 Flags
@@ -110,6 +108,8 @@ This image is configurable using different flags
 | web.telemetry-path           | /metrics   | Path under which to expose metrics                                                                  |
 | log.level                    | info       | Only log messages with the given severity or above. Valid levels: [debug, info, warn, error, fatal] |
 | log.enable-sarama            | false      | Turn on Sarama logging                                                                              |
+| max.offsets                  | 1000       | Maximum number of offsets to store in the interpolation table for a partition |
+| prune.interval               | 30         | How frequently should the interpolation table be pruned, in seconds |
 
 ### Notes
 
@@ -131,7 +131,7 @@ For details on the underlying metrics please see [Apache Kafka](https://kafka.ap
 
 **Metrics details**
 
-| Name            | Exposed informations                   |
+| Name            | Exposed information                   |
 | --------------- | -------------------------------------- |
 | `kafka_brokers` | Number of Brokers in the Kafka Cluster |
 
@@ -147,7 +147,7 @@ kafka_brokers 3
 
 **Metrics details**
 
-| Name                                               | Exposed informations                                |
+| Name                                               | Exposed information                                |
 | -------------------------------------------------- | --------------------------------------------------- |
 | `kafka_topic_partitions`                           | Number of partitions for this Topic                 |
 | `kafka_topic_partition_current_offset`             | Current Offset of a Broker at Topic/Partition       |
@@ -198,7 +198,7 @@ kafka_topic_partition_under_replicated_partition{partition="0",topic="__consumer
 
 **Metrics details**
 
-| Name                                 | Exposed informations                                          |
+| Name                                 | Exposed information                                          |
 | ------------------------------------ | ------------------------------------------------------------- |
 | `kafka_consumergroup_current_offset` | Current Offset of a ConsumerGroup at Topic/Partition          |
 | `kafka_consumergroup_lag`            | Current Approximate Lag of a ConsumerGroup at Topic/Partition |
@@ -215,6 +215,31 @@ kafka_consumergroup_current_offset{consumergroup="KMOffsetCache-kafka-manager-38
 kafka_consumergroup_lag{consumergroup="KMOffsetCache-kafka-manager-3806276532-ml44w",partition="0",topic="__consumer_offsets"} 1
 ```
 
+### Consumer Lag
+
+**Metric Details**
+
+| Name                                 | Exposed information                                          |
+| ------------------------------------ | ------------------------------------------------------------- |
+| `kafka_consumer_lag_millis` | Current approximation of consumer lag for a ConsumerGroup at Topic/Partition          |
+| `kafka_consumer_lag_extrapolation`            | Indicates that a consumer group lag estimation used extrapolation |
+| `kafka_consumer_lag_interpolation`            | Indicates that a consumer group lag estimation used interpolation |
+
+**Metrics output example**
+```
+# HELP kafka_consumer_lag_extrapolation Indicates that a consumer group lag estimation used extrapolation
+# TYPE kafka_consumer_lag_extrapolation counter
+kafka_consumer_lag_extrapolation{consumergroup="perf-consumer-74084",partition="0",topic="test"} 1
+   
+# HELP kafka_consumer_lag_interpolation Indicates that a consumer group lag estimation used interpolation
+# TYPE kafka_consumer_lag_interpolation counter
+kafka_consumer_lag_interpolation{consumergroup="perf-consumer-74084",partition="0",topic="test"} 1
+   
+# HELP kafka_consumer_lag_millis Current approximation of consumer lag for a ConsumerGroup at Topic/Partition
+# TYPE kafka_consumer_lag_millis gauge
+kafka_consumer_lag_millis{consumergroup="perf-consumer-74084",partition="0",topic="test"} 3.4457231197552e+10
+```
+
 Grafana Dashboard
 -------
 
@@ -222,17 +247,27 @@ Grafana Dashboard ID: 7589, name: Kafka Exporter Overview.
 
 For details of the dashboard please see [Kafka Exporter Overview](https://grafana.com/dashboards/7589).
 
+Lag Estimation
+-
+The technique to estimate lag for a consumer group, topic, and partition is taken from the [Lightbend Kafka Lag Exporter](https://github.com/lightbend/kafka-lag-exporter). 
+
+Once the exporter starts up, sampling of the next offset to be produced begins. The interpolation table is built from these samples, and the current offset for each monitored consumer group are compared against values in the table. If an upper and lower bound for the current offset of a consumer group are in the table, the interpolation technique is used. If only an upper bound is container within the table, extrapolation is used. 
+
+At a configurable interval `prune.interval` (default is 30 seconds) an operation to prune the interpolation table is performed. Any consumer group or topic that are no longer listed by the broker is removed. The number of offsets for each partition is trimmed down to `max.offsets` (default 1000), with the oldest offsets removed first.
+
+Pruning of the interpolation table happens on a separate thread and thread safety is ensured by a lock around the interpolation table. 
+
 Contribute
 ----------
 
-If you like Kafka Exporter, please give me a star. This will help more people know Kafka Exporter.
+To contribute to the upstream project, please open a [pull request](https://github.com/danielqsj/kafka_exporter/pulls).
 
-Please feel free to send me [pull requests](https://github.com/danielqsj/kafka_exporter/pulls).
+To contribute to this fork please open a [pull request here](https://github.com/davidmparrott/kafka_exporter/pulls)
 
 Donation
 --------
 
-Your donation will encourage me to continue to improve Kafka Exporter. Support Alipay donation.
+To donate to the developer of the project this is forked from please use the donation link below
 
 ![](https://github.com/danielqsj/kafka_exporter/raw/master/alipay.jpg)
 

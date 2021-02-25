@@ -1,7 +1,11 @@
-FROM        quay.io/prometheus/busybox:latest
-MAINTAINER  Daniel Qian <qsj.daniel@gmail.com>
+FROM        golang:alpine AS build
+MAINTAINER  David Parrott <david@davidmparrott.com>
 
-COPY kafka_exporter /bin/kafka_exporter
+ADD . /src
+WORKDIR /src
+RUN go build -o /server
 
+FROM golang:alpine
 EXPOSE     9308
-ENTRYPOINT [ "/bin/kafka_exporter" ]
+COPY --from=build /server /
+ENTRYPOINT [ "/server" ]
