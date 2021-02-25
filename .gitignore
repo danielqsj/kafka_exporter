@@ -23,3 +23,6 @@ kafka_exporter
 
 # Test configuration
 test/
+
+# Golang debugger
+debug

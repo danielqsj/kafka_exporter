@@ -66,6 +66,69 @@ func (mc *MockSequence) For(reqBody versionedDecoder) (res encoder) {
 	return res
 }
 
+type MockListGroupsResponse struct {
+	groups map[string]string
+	t      TestReporter
+}
+
+func NewMockListGroupsResponse(t TestReporter) *MockListGroupsResponse {
+	return &MockListGroupsResponse{
+		groups: make(map[string]string),
+		t:      t,
+	}
+}
+
+func (m *MockListGroupsResponse) For(reqBody versionedDecoder) encoder {
+	request := reqBody.(*ListGroupsRequest)
+	_ = request
+	response := &ListGroupsResponse{
+		Groups: m.groups,
+	}
+	return response
+}
+
+func (m *MockListGroupsResponse) AddGroup(groupID, protocolType string) *MockListGroupsResponse {
+	m.groups[groupID] = protocolType
+	return m
+}
+
+type MockDescribeGroupsResponse struct {
+	groups map[string]*GroupDescription
+	t      TestReporter
+}
+
+func NewMockDescribeGroupsResponse(t TestReporter) *MockDescribeGroupsResponse {
+	return &MockDescribeGroupsResponse{
+		t:      t,
+		groups: make(map[string]*GroupDescription),
+	}
+}
+
+func (m *MockDescribeGroupsResponse) AddGroupDescription(groupID string, description *GroupDescription) *MockDescribeGroupsResponse {
+	m.groups[groupID] = description
+	return m
+}
+
+func (m *MockDescribeGroupsResponse) For(reqBody versionedDecoder) encoder {
+	request := reqBody.(*DescribeGroupsRequest)
+
+	response := &DescribeGroupsResponse{}
+	for _, requestedGroup := range request.Groups {
+		if group, ok := m.groups[requestedGroup]; ok {
+			response.Groups = append(response.Groups, group)
+		} else {
+			// Mimic real kafka - if a group doesn't exist, return
+			// an entry with state "Dead"
+			response.Groups = append(response.Groups, &GroupDescription{
+				GroupId: requestedGroup,
+				State:   "Dead",
+			})
+		}
+	}
+
+	return response
+}
+
 // MockMetadataResponse is a `MetadataResponse` builder.
 type MockMetadataResponse struct {
 	controllerID int32
@@ -111,17 +174,25 @@ func (mmr *MockMetadataResponse) For(reqBody versionedDecoder) encoder {
 	for addr, brokerID := range mmr.brokers {
 		metadataResponse.AddBroker(addr, brokerID)
 	}
+
+	// Generate set of replicas
+	replicas := []int32{}
+
+	for _, brokerID := range mmr.brokers {
+		replicas = append(replicas, brokerID)
+	}
+
 	if len(metadataRequest.Topics) == 0 {
 		for topic, partitions := range mmr.leaders {
 			for partition, brokerID := range partitions {
-				metadataResponse.AddTopicPartition(topic, partition, brokerID, nil, nil, ErrNoError)
+				metadataResponse.AddTopicPartition(topic, partition, brokerID, replicas, replicas, ErrNoError)
 			}
 		}
 		return metadataResponse
 	}
 	for _, topic := range metadataRequest.Topics {
 		for partition, brokerID := range mmr.leaders[topic] {
-			metadataResponse.AddTopicPartition(topic, partition, brokerID, nil, nil, ErrNoError)
+			metadataResponse.AddTopicPartition(topic, partition, brokerID, replicas, replicas, ErrNoError)
 		}
 	}
 	return metadataResponse
@@ -523,7 +594,7 @@ func (mr *MockOffsetFetchResponse) SetOffset(group, topic string, partition int3
 		partitions = make(map[int32]*OffsetFetchResponseBlock)
 		topics[topic] = partitions
 	}
-	partitions[partition] = &OffsetFetchResponseBlock{offset, metadata, kerror}
+	partitions[partition] = &OffsetFetchResponseBlock{offset, 0, metadata, kerror}
 	return mr
 }
 
@@ -631,16 +702,32 @@ func (mr *MockDescribeConfigsResponse) For(reqBody versionedDecoder) encoder {
 	req := reqBody.(*DescribeConfigsRequest)
 	res := &DescribeConfigsResponse{}
 
-	var configEntries []*ConfigEntry
-	configEntries = append(configEntries, &ConfigEntry{Name: "my_topic",
-		Value:     "my_topic",
-		ReadOnly:  true,
-		Default:   true,
-		Sensitive: false,
-	})
-
 	for _, r := range req.Resources {
-		res.Resources = append(res.Resources, &ResourceResponse{Name: r.Name, Configs: configEntries})
+		var configEntries []*ConfigEntry
+		switch r.Type {
+		case TopicResource:
+			configEntries = append(configEntries,
+				&ConfigEntry{Name: "max.message.bytes",
+					Value:     "1000000",
+					ReadOnly:  false,
+					Default:   true,
+					Sensitive: false,
+				}, &ConfigEntry{Name: "retention.ms",
+					Value:     "5000",
+					ReadOnly:  false,
+					Default:   false,
+					Sensitive: false,
+				}, &ConfigEntry{Name: "password",
+					Value:     "12345",
+					ReadOnly:  false,
+					Default:   false,
+					Sensitive: true,
+				})
+			res.Resources = append(res.Resources, &ResourceResponse{
+				Name:    r.Name,
+				Configs: configEntries,
+			})
+		}
 	}
 	return res
 }
@@ -706,8 +793,62 @@ func (mr *MockListAclsResponse) For(reqBody versionedDecoder) encoder {
 	return res
 }
 
+type MockSaslAuthenticateResponse struct {
+	t             TestReporter
+	kerror        KError
+	saslAuthBytes []byte
+}
+
+func NewMockSaslAuthenticateResponse(t TestReporter) *MockSaslAuthenticateResponse {
+	return &MockSaslAuthenticateResponse{t: t}
+}
+
+func (msar *MockSaslAuthenticateResponse) For(reqBody versionedDecoder) encoder {
+	res := &SaslAuthenticateResponse{}
+	res.Err = msar.kerror
+	res.SaslAuthBytes = msar.saslAuthBytes
+	return res
+}
+
+func (msar *MockSaslAuthenticateResponse) SetError(kerror KError) *MockSaslAuthenticateResponse {
+	msar.kerror = kerror
+	return msar
+}
+
+func (msar *MockSaslAuthenticateResponse) SetAuthBytes(saslAuthBytes []byte) *MockSaslAuthenticateResponse {
+	msar.saslAuthBytes = saslAuthBytes
+	return msar
+}
+
 type MockDeleteAclsResponse struct {
 	t TestReporter
+}
+
+type MockSaslHandshakeResponse struct {
+	enabledMechanisms []string
+	kerror            KError
+	t                 TestReporter
+}
+
+func NewMockSaslHandshakeResponse(t TestReporter) *MockSaslHandshakeResponse {
+	return &MockSaslHandshakeResponse{t: t}
+}
+
+func (mshr *MockSaslHandshakeResponse) For(reqBody versionedDecoder) encoder {
+	res := &SaslHandshakeResponse{}
+	res.Err = mshr.kerror
+	res.EnabledMechanisms = mshr.enabledMechanisms
+	return res
+}
+
+func (mshr *MockSaslHandshakeResponse) SetError(kerror KError) *MockSaslHandshakeResponse {
+	mshr.kerror = kerror
+	return mshr
+}
+
+func (mshr *MockSaslHandshakeResponse) SetEnabledMechanisms(enabledMechanisms []string) *MockSaslHandshakeResponse {
+	mshr.enabledMechanisms = enabledMechanisms
+	return mshr
 }
 
 func NewMockDeleteAclsResponse(t TestReporter) *MockDeleteAclsResponse {

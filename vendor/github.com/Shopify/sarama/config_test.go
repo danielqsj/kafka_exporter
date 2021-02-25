@@ -33,6 +33,13 @@ func TestEmptyClientIDConfigValidates(t *testing.T) {
 	}
 }
 
+type DummyTokenProvider struct {
+}
+
+func (t *DummyTokenProvider) Token() (*AccessToken, error) {
+	return &AccessToken{Token: "access-token-string"}, nil
+}
+
 func TestNetConfigValidates(t *testing.T) {
 	tests := []struct {
 		name string
@@ -78,6 +85,20 @@ func TestNetConfigValidates(t *testing.T) {
 				cfg.Net.SASL.Password = ""
 			},
 			"Net.SASL.Password must not be empty when SASL is enabled"},
+		{"SASL.Mechanism - Invalid mechanism type",
+			func(cfg *Config) {
+				cfg.Net.SASL.Enable = true
+				cfg.Net.SASL.Mechanism = "AnIncorrectSASLMechanism"
+				cfg.Net.SASL.TokenProvider = &DummyTokenProvider{}
+			},
+			"The SASL mechanism configuration is invalid. Possible values are `OAUTHBEARER` and `PLAIN`"},
+		{"SASL.Mechanism.OAUTHBEARER - Missing token provider",
+			func(cfg *Config) {
+				cfg.Net.SASL.Enable = true
+				cfg.Net.SASL.Mechanism = SASLTypeOAuth
+				cfg.Net.SASL.TokenProvider = nil
+			},
+			"An AccessTokenProvider instance must be provided to Net.SASL.User.TokenProvider"},
 	}
 
 	for i, test := range tests {
@@ -207,6 +228,32 @@ func TestProducerConfigValidates(t *testing.T) {
 				cfg.Producer.Retry.Backoff = -1
 			},
 			"Producer.Retry.Backoff must be >= 0"},
+		{"Idempotent Version",
+			func(cfg *Config) {
+				cfg.Producer.Idempotent = true
+				cfg.Version = V0_10_0_0
+			},
+			"Idempotent producer requires Version >= V0_11_0_0"},
+		{"Idempotent with Producer.Retry.Max",
+			func(cfg *Config) {
+				cfg.Version = V0_11_0_0
+				cfg.Producer.Idempotent = true
+				cfg.Producer.Retry.Max = 0
+			},
+			"Idempotent producer requires Producer.Retry.Max >= 1"},
+		{"Idempotent with Producer.RequiredAcks",
+			func(cfg *Config) {
+				cfg.Version = V0_11_0_0
+				cfg.Producer.Idempotent = true
+			},
+			"Idempotent producer requires Producer.RequiredAcks to be WaitForAll"},
+		{"Idempotent with Net.MaxOpenRequests",
+			func(cfg *Config) {
+				cfg.Version = V0_11_0_0
+				cfg.Producer.Idempotent = true
+				cfg.Producer.RequiredAcks = WaitForAll
+			},
+			"Idempotent producer requires Net.MaxOpenRequests to be 1"},
 	}
 
 	for i, test := range tests {

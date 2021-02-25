@@ -67,6 +67,9 @@ type Client interface {
 	// in local cache. This function only works on Kafka 0.8.2 and higher.
 	RefreshCoordinator(consumerGroup string) error
 
+	// InitProducerID retrieves information required for Idempotent Producer
+	InitProducerID() (*InitProducerIDResponse, error)
+
 	// Close shuts down all broker connections managed by this client. It is required
 	// to call this function before a client object passes out of scope, as it will
 	// otherwise leak memory. You must close any Producers or Consumers using a client
@@ -176,11 +179,31 @@ func (client *client) Config() *Config {
 func (client *client) Brokers() []*Broker {
 	client.lock.RLock()
 	defer client.lock.RUnlock()
-	brokers := make([]*Broker, 0)
+	brokers := make([]*Broker, 0, len(client.brokers))
 	for _, broker := range client.brokers {
 		brokers = append(brokers, broker)
 	}
 	return brokers
+}
+
+func (client *client) InitProducerID() (*InitProducerIDResponse, error) {
+	var err error
+	for broker := client.any(); broker != nil; broker = client.any() {
+
+		req := &InitProducerIDRequest{}
+
+		response, err := broker.InitProducerID(req)
+		switch err.(type) {
+		case nil:
+			return response, nil
+		default:
+			// some error, remove that broker and try again
+			Logger.Printf("Client got error from broker %d when issuing InitProducerID : %v\n", broker.ID(), err)
+			_ = broker.Close()
+			client.deregisterBroker(broker)
+		}
+	}
+	return nil, err
 }
 
 func (client *client) Close() error {
@@ -687,8 +710,11 @@ func (client *client) refreshMetadata() error {
 func (client *client) tryRefreshMetadata(topics []string, attemptsRemaining int) error {
 	retry := func(err error) error {
 		if attemptsRemaining > 0 {
+			backoff := client.computeBackoff(attemptsRemaining)
 			Logger.Printf("client/metadata retrying after %dms... (%d attempts remaining)\n", client.conf.Metadata.Retry.Backoff/time.Millisecond, attemptsRemaining)
-			time.Sleep(client.conf.Metadata.Retry.Backoff)
+			if backoff > 0 {
+				time.Sleep(backoff)
+			}
 			return client.tryRefreshMetadata(topics, attemptsRemaining-1)
 		}
 		return err
@@ -723,7 +749,7 @@ func (client *client) tryRefreshMetadata(topics []string, attemptsRemaining int)
 			return err
 		default:
 			// some other error, remove that broker and try again
-			Logger.Println("client/metadata got error from broker while fetching metadata:", err)
+			Logger.Printf("client/metadata got error from broker %d while fetching metadata: %v\n", broker.ID(), err)
 			_ = broker.Close()
 			client.deregisterBroker(broker)
 		}
@@ -816,11 +842,22 @@ func (client *client) cachedController() *Broker {
 	return client.brokers[client.controllerID]
 }
 
+func (client *client) computeBackoff(attemptsRemaining int) time.Duration {
+	if client.conf.Metadata.Retry.BackoffFunc != nil {
+		maxRetries := client.conf.Metadata.Retry.Max
+		retries := maxRetries - attemptsRemaining
+		return client.conf.Metadata.Retry.BackoffFunc(retries, maxRetries)
+	} else {
+		return client.conf.Metadata.Retry.Backoff
+	}
+}
+
 func (client *client) getConsumerMetadata(consumerGroup string, attemptsRemaining int) (*FindCoordinatorResponse, error) {
 	retry := func(err error) (*FindCoordinatorResponse, error) {
 		if attemptsRemaining > 0 {
-			Logger.Printf("client/coordinator retrying after %dms... (%d attempts remaining)\n", client.conf.Metadata.Retry.Backoff/time.Millisecond, attemptsRemaining)
-			time.Sleep(client.conf.Metadata.Retry.Backoff)
+			backoff := client.computeBackoff(attemptsRemaining)
+			Logger.Printf("client/coordinator retrying after %dms... (%d attempts remaining)\n", backoff/time.Millisecond, attemptsRemaining)
+			time.Sleep(backoff)
 			return client.getConsumerMetadata(consumerGroup, attemptsRemaining-1)
 		}
 		return nil, err

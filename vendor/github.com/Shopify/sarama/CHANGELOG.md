@@ -1,5 +1,95 @@
 # Changelog
 
+#### Version 1.21.0 (2019-02-24)
+
+New Features:
+- Add CreateAclRequest, DescribeAclRequest, DeleteAclRequest
+  ([1236](https://github.com/Shopify/sarama/pull/1236)).
+- Add DescribeTopic, DescribeConsumerGroup, ListConsumerGroups, ListConsumerGroupOffsets admin requests
+  ([1178](https://github.com/Shopify/sarama/pull/1178)).
+- Implement SASL/OAUTHBEARER
+  ([1240](https://github.com/Shopify/sarama/pull/1240)).
+
+Improvements:
+- Add Go mod support
+  ([1282](https://github.com/Shopify/sarama/pull/1282)).
+- Add error codes 73—76
+  ([1239](https://github.com/Shopify/sarama/pull/1239)).
+- Add retry backoff function
+  ([1160](https://github.com/Shopify/sarama/pull/1160)).
+- Maintain metadata in the producer even when retries are disabled
+  ([1189](https://github.com/Shopify/sarama/pull/1189)).
+- Include ReplicaAssignment in ListTopics
+  ([1274](https://github.com/Shopify/sarama/pull/1274)).
+- Add producer performance tool
+  ([1222](https://github.com/Shopify/sarama/pull/1222)).
+- Add support LogAppend timestamps
+  ([1258](https://github.com/Shopify/sarama/pull/1258)).
+
+Bug Fixes:
+- Fix potential deadlock when a heartbeat request fails
+  ([1286](https://github.com/Shopify/sarama/pull/1286)).
+- Fix consuming compacted topic
+  ([1227](https://github.com/Shopify/sarama/pull/1227)).
+- Set correct Kafka version for DescribeConfigsRequest v1
+  ([1277](https://github.com/Shopify/sarama/pull/1277)).
+- Update kafka test version
+  ([1273](https://github.com/Shopify/sarama/pull/1273)).
+
+#### Version 1.20.1 (2019-01-10)
+
+New Features:
+- Add optional replica id in offset request
+  ([1100](https://github.com/Shopify/sarama/pull/1100)).
+
+Improvements:
+- Implement DescribeConfigs Request + Response v1 & v2
+  ([1230](https://github.com/Shopify/sarama/pull/1230)).
+- Reuse compression objects
+  ([1185](https://github.com/Shopify/sarama/pull/1185)).
+- Switch from png to svg for GoDoc link in README
+  ([1243](https://github.com/Shopify/sarama/pull/1243)).
+- Fix typo in deprecation notice for FetchResponseBlock.Records
+  ([1242](https://github.com/Shopify/sarama/pull/1242)).
+- Fix typos in consumer metadata response file
+  ([1244](https://github.com/Shopify/sarama/pull/1244)).
+
+Bug Fixes:
+- Revert to individual msg retries for non-idempotent
+  ([1203](https://github.com/Shopify/sarama/pull/1203)).
+- Respect MaxMessageBytes limit for uncompressed messages
+  ([1141](https://github.com/Shopify/sarama/pull/1141)).
+
+#### Version 1.20.0 (2018-12-10)
+
+New Features:
+ - Add support for zstd compression
+   ([#1170](https://github.com/Shopify/sarama/pull/1170)).
+ - Add support for Idempotent Producer
+   ([#1152](https://github.com/Shopify/sarama/pull/1152)).
+ - Add support support for Kafka 2.1.0
+   ([#1229](https://github.com/Shopify/sarama/pull/1229)).
+ - Add support support for OffsetCommit request/response pairs versions v1 to v5
+   ([#1201](https://github.com/Shopify/sarama/pull/1201)).
+ - Add support support for OffsetFetch request/response pair up to version v5
+   ([#1198](https://github.com/Shopify/sarama/pull/1198)).
+
+Improvements:
+ - Export broker's Rack setting
+   ([#1173](https://github.com/Shopify/sarama/pull/1173)).
+ - Always use latest patch version of Go on CI
+   ([#1202](https://github.com/Shopify/sarama/pull/1202)).
+ - Add error codes 61 to 72
+   ([#1195](https://github.com/Shopify/sarama/pull/1195)).
+
+Bug Fixes:
+ - Fix build without cgo
+   ([#1182](https://github.com/Shopify/sarama/pull/1182)).
+ - Fix go vet suggestion in consumer group file
+   ([#1209](https://github.com/Shopify/sarama/pull/1209)).
+ - Fix typos in code and comments
+   ([#1228](https://github.com/Shopify/sarama/pull/1228)).
+
 #### Version 1.19.0 (2018-09-27)
 
 New Features:

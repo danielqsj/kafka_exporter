@@ -1,6 +1,6 @@
 [[constraint]]
   name = "github.com/Shopify/sarama"
-  version = "1.19.0"
+  version = "1.21.0"
 
 [[constraint]]
   name = "github.com/prometheus/client_golang"
