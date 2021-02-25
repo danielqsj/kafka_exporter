@@ -62,6 +62,18 @@ spec:
             - name: metrics
               containerPort: 9308
               protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: metrics
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: metrics
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 10
           {{- if .Values.kafkaExporter.tls.enabled }}
           volumeMounts:
           - name: tls-certs
