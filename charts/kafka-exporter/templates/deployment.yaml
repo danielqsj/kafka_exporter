@@ -62,6 +62,27 @@ spec:
             - name: metrics
               containerPort: 9308
               protocol: TCP
+          livenessProbe:
+            failureThreshold: 1
+            httpGet:
+              path: /healthz
+              port: metrics
+              scheme: HTTP
+            initialDelaySeconds: 3
+            periodSeconds: 30
+            successThreshold: 1
+            timeoutSeconds: 9
+          readinessProbe:
+            failureThreshold: 1
+            httpGet:
+              path: /healthz
+              port: metrics
+              scheme: HTTP
+            initialDelaySeconds: 3
+            periodSeconds: 15
+            successThreshold: 1
+            timeoutSeconds: 9
+
           {{- if .Values.kafkaExporter.tls.enabled }}
           volumeMounts:
           - name: tls-certs

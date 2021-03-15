@@ -637,6 +637,10 @@ func main() {
 	        </body>
 	        </html>`))
 	})
+	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		// need more specific sarama check
+		w.Write([]byte("ok"))
+	})
 
 	plog.Infoln("Listening on", *listenAddress)
 	plog.Fatal(http.ListenAndServe(*listenAddress, nil))
