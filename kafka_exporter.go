@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	kazoo "github.com/krallistic/kazoo-go"
+	"github.com/krallistic/kazoo-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	plog "github.com/prometheus/common/log"
@@ -53,6 +53,8 @@ type Exporter struct {
 	client                  sarama.Client
 	topicFilter             *regexp.Regexp
 	groupFilter             *regexp.Regexp
+	topicExcludeFilter      *regexp.Regexp
+	groupExcludeFilter      *regexp.Regexp
 	mu                      sync.Mutex
 	useZooKeeperLag         bool
 	zookeeperClient         *kazoo.Kazoo
@@ -114,7 +116,7 @@ func canReadFile(path string) bool {
 }
 
 // NewExporter returns an initialized Exporter.
-func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Exporter, error) {
+func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string, topicExcludeFilter string, groupExcludeFilter string) (*Exporter, error) {
 	var zookeeperClient *kazoo.Kazoo
 	config := sarama.NewConfig()
 	config.ClientID = clientID
@@ -207,6 +209,8 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		client:                  client,
 		topicFilter:             regexp.MustCompile(topicFilter),
 		groupFilter:             regexp.MustCompile(groupFilter),
+		topicExcludeFilter:      regexp.MustCompile(topicExcludeFilter),
+		groupExcludeFilter:      regexp.MustCompile(groupExcludeFilter),
 		useZooKeeperLag:         opts.useZooKeeperLag,
 		zookeeperClient:         zookeeperClient,
 		nextMetadataRefresh:     time.Now(),
@@ -263,7 +267,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 	getTopicMetrics := func(topic string) {
 		defer wg.Done()
-		if e.topicFilter.MatchString(topic) {
+		if e.topicFilter.MatchString(topic) && !e.topicExcludeFilter.MatchString(topic) {
 			partitions, err := e.client.Partitions(topic)
 			if err != nil {
 				plog.Errorf("Cannot get partitions of topic %s: %v", topic, err)
@@ -388,7 +392,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		}
 		groupIds := make([]string, 0)
 		for groupId := range groups.Groups {
-			if e.groupFilter.MatchString(groupId) {
+			if e.groupFilter.MatchString(groupId) && !e.groupExcludeFilter.MatchString(groupId) {
 				groupIds = append(groupIds, groupId)
 			}
 		}
@@ -484,11 +488,13 @@ func init() {
 
 func main() {
 	var (
-		listenAddress = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9308").String()
-		metricsPath   = kingpin.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
-		topicFilter   = kingpin.Flag("topic.filter", "Regex that determines which topics to collect.").Default(".*").String()
-		groupFilter   = kingpin.Flag("group.filter", "Regex that determines which consumer groups to collect.").Default(".*").String()
-		logSarama     = kingpin.Flag("log.enable-sarama", "Turn on Sarama logging.").Default("false").Bool()
+		listenAddress      = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9308").String()
+		metricsPath        = kingpin.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
+		topicFilter        = kingpin.Flag("topic.filter", "Regex that determines which topics to collect.").Default(".*").String()
+		groupFilter        = kingpin.Flag("group.filter", "Regex that determines which consumer groups to collect.").Default(".*").String()
+		topicExcludeFilter = kingpin.Flag("topic.excludefilter", "Regex that determines which topics to collect.").Default("").String()
+		groupExcludeFilter = kingpin.Flag("group.excludefilter", "Regex that determines which consumer groups to collect.").Default("").String()
+		logSarama          = kingpin.Flag("log.enable-sarama", "Turn on Sarama logging.").Default("false").Bool()
 
 		opts = kafkaOpts{}
 	)
@@ -620,7 +626,7 @@ func main() {
 		sarama.Logger = log.New(os.Stdout, "[sarama] ", log.LstdFlags)
 	}
 
-	exporter, err := NewExporter(opts, *topicFilter, *groupFilter)
+	exporter, err := NewExporter(opts, *topicFilter, *groupFilter, *topicExcludeFilter, *groupExcludeFilter)
 	if err != nil {
 		plog.Fatalln(err)
 	}
