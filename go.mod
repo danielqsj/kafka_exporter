@@ -14,12 +14,12 @@ require (
 	github.com/prometheus/client_golang v1.9.0
 	github.com/prometheus/common v0.19.0
 	github.com/prometheus/procfs v0.6.0 // indirect
-	github.com/prometheus/promu v0.8.1 // indirect
+	github.com/prometheus/promu v0.10.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	github.com/xdg/scram v0.0.0-20180814205039-7eeb5667e42c
-	golang.org/x/net v0.0.0-20210315170653-34ac3e1c2000 // indirect
+	golang.org/x/net v0.0.0-20210316092652-d523dce5a7f4 // indirect
 	golang.org/x/oauth2 v0.0.0-20210313182246-cd4f82c27b84 // indirect
-	golang.org/x/sys v0.0.0-20210315160823-c6e025ad8005 // indirect
+	golang.org/x/sys v0.0.0-20210317091845-390168757d9c // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 )
