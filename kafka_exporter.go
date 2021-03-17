@@ -74,7 +74,7 @@ type kafkaOpts struct {
 	tlsInsecureSkipTLSVerify bool
 	kafkaVersion             string
 	useZooKeeperLag          bool
-	uriZookeeper             []string
+	uriZookeeper             string
 	labels                   string
 	metadataRefreshInterval  string
 }
@@ -183,7 +183,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 	}
 
 	if opts.useZooKeeperLag {
-		zookeeperClient, err = kazoo.NewKazoo(opts.uriZookeeper, nil)
+		zookeeperClient, err = kazoo.NewKazooFromConnectionString(opts.uriZookeeper, nil)
 	}
 
 	interval, err := time.ParseDuration(opts.metadataRefreshInterval)
@@ -505,7 +505,7 @@ func main() {
 	kingpin.Flag("tls.insecure-skip-tls-verify", "If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure.").Default("false").BoolVar(&opts.tlsInsecureSkipTLSVerify)
 	kingpin.Flag("kafka.version", "Kafka broker version").Default(sarama.V1_0_0_0.String()).StringVar(&opts.kafkaVersion)
 	kingpin.Flag("use.consumelag.zookeeper", "if you need to use a group from zookeeper").Default("false").BoolVar(&opts.useZooKeeperLag)
-	kingpin.Flag("zookeeper.server", "Address (hosts) of zookeeper server.").Default("localhost:2181").StringsVar(&opts.uriZookeeper)
+	kingpin.Flag("zookeeper.server", "Address (hosts) of zookeeper server.").Default("localhost:2181").StringVar(&opts.uriZookeeper)
 	kingpin.Flag("kafka.labels", "Kafka cluster name").Default("").StringVar(&opts.labels)
 	kingpin.Flag("refresh.metadata", "Metadata refresh interval").Default("30s").StringVar(&opts.metadataRefreshInterval)
 
@@ -601,7 +601,7 @@ func main() {
 	consumergroupLagZookeeper = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "consumergroupzookeeper", "lag_zookeeper"),
 		"Current Approximate Lag(zookeeper) of a ConsumerGroup at Topic/Partition",
-		[]string{"consumergroup", "topic", "partition"}, nil,
+		[]string{"consumergroup", "topic", "partition"}, labels,
 	)
 
 	consumergroupLagSum = prometheus.NewDesc(
