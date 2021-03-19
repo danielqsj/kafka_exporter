@@ -20,8 +20,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	plog "github.com/prometheus/common/log"
 	"github.com/prometheus/common/version"
-	"github.com/rcrowley/go-metrics"
-	"gopkg.in/alecthomas/kingpin.v2"
+	metrics "github.com/rcrowley/go-metrics"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 const (
@@ -45,6 +45,8 @@ var (
 	consumergroupLagSum                *prometheus.Desc
 	consumergroupLagZookeeper          *prometheus.Desc
 	consumergroupMembers               *prometheus.Desc
+	consumergroupsFiltered             *prometheus.Desc
+	topicFiltered                      *prometheus.Desc
 )
 
 // Exporter collects Kafka stats from the given server and exports them using
@@ -53,6 +55,8 @@ type Exporter struct {
 	client                  sarama.Client
 	topicFilter             *regexp.Regexp
 	groupFilter             *regexp.Regexp
+	invertTopicFilter       bool
+	invertGroupFilter       bool
 	mu                      sync.Mutex
 	useZooKeeperLag         bool
 	zookeeperClient         *kazoo.Kazoo
@@ -114,7 +118,7 @@ func canReadFile(path string) bool {
 }
 
 // NewExporter returns an initialized Exporter.
-func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Exporter, error) {
+func NewExporter(opts kafkaOpts, topicFilter, groupFilter string, invertTopicFilter, invertGroupFilter bool) (*Exporter, error) {
 	var zookeeperClient *kazoo.Kazoo
 	config := sarama.NewConfig()
 	config.ClientID = clientID
@@ -207,6 +211,8 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		client:                  client,
 		topicFilter:             regexp.MustCompile(topicFilter),
 		groupFilter:             regexp.MustCompile(groupFilter),
+		invertTopicFilter:       invertTopicFilter,
+		invertGroupFilter:       invertGroupFilter,
 		useZooKeeperLag:         opts.useZooKeeperLag,
 		zookeeperClient:         zookeeperClient,
 		nextMetadataRefresh:     time.Now(),
@@ -231,6 +237,8 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- consumergroupLag
 	ch <- consumergroupLagZookeeper
 	ch <- consumergroupLagSum
+	ch <- consumergroupsFiltered
+	ch <- topicFiltered
 }
 
 // Collect fetches the stats from configured Kafka location and delivers them
@@ -263,7 +271,8 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 	getTopicMetrics := func(topic string) {
 		defer wg.Done()
-		if e.topicFilter.MatchString(topic) {
+		if (!e.invertTopicFilter && e.topicFilter.MatchString(topic)) || (e.invertTopicFilter && !e.topicFilter.MatchString(topic)) {
+			ch <- prometheus.MustNewConstMetric(topicFiltered, prometheus.GaugeValue, float64(0), topic)
 			partitions, err := e.client.Partitions(topic)
 			if err != nil {
 				plog.Errorf("Cannot get partitions of topic %s: %v", topic, err)
@@ -363,6 +372,10 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 					}
 				}
 			}
+		} else {
+			ch <- prometheus.MustNewConstMetric(
+				topicFiltered, prometheus.GaugeValue, float64(1), topic,
+			)
 		}
 	}
 
@@ -374,6 +387,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	wg.Wait()
 
 	getConsumerGroupMetrics := func(broker *sarama.Broker) {
+		start := time.Now()
 		defer wg.Done()
 		if err := broker.Open(e.client.Config()); err != nil && err != sarama.ErrAlreadyConnected {
 			plog.Errorf("Cannot connect to broker %d: %v", broker.ID(), err)
@@ -388,10 +402,13 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		}
 		groupIds := make([]string, 0)
 		for groupId := range groups.Groups {
-			if e.groupFilter.MatchString(groupId) {
+			if (!e.invertGroupFilter && e.groupFilter.MatchString(groupId)) || (e.invertGroupFilter && !e.groupFilter.MatchString(groupId)) {
 				groupIds = append(groupIds, groupId)
 			}
 		}
+		ch <- prometheus.MustNewConstMetric(
+			consumergroupsFiltered, prometheus.GaugeValue, float64(len(groups.Groups)-len(groupIds)), broker.Addr(),
+		)
 
 		describeGroups, err := broker.DescribeGroups(&sarama.DescribeGroupsRequest{Groups: groupIds})
 		if err != nil {
@@ -464,6 +481,8 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 				}
 			}
 		}
+		end := time.Now()
+		plog.Info("Broker: ", broker.ID(), " Duration: ", end.Sub(start))
 	}
 
 	if len(e.client.Brokers()) > 0 {
@@ -484,11 +503,13 @@ func init() {
 
 func main() {
 	var (
-		listenAddress = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9308").String()
-		metricsPath   = kingpin.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
-		topicFilter   = kingpin.Flag("topic.filter", "Regex that determines which topics to collect.").Default(".*").String()
-		groupFilter   = kingpin.Flag("group.filter", "Regex that determines which consumer groups to collect.").Default(".*").String()
-		logSarama     = kingpin.Flag("log.enable-sarama", "Turn on Sarama logging.").Default("false").Bool()
+		listenAddress     = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9308").String()
+		metricsPath       = kingpin.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
+		topicFilter       = kingpin.Flag("topic.filter", "Regex that matches topics to collect.").Default(".*").String()
+		groupFilter       = kingpin.Flag("group.filter", "Regex that matches consumer groups to collect.").Default(".*").String()
+		invertTopicFilter = kingpin.Flag("invert.topic.filter", "Invert topic regex match.").Default("false").Bool()
+		invertGroupFilter = kingpin.Flag("invert.group.filter", "Invert group regex match.").Default("false").Bool()
+		logSarama         = kingpin.Flag("log.enable-sarama", "Turn on Sarama logging.").Default("false").Bool()
 
 		opts = kafkaOpts{}
 	)
@@ -616,11 +637,23 @@ func main() {
 		[]string{"consumergroup"}, labels,
 	)
 
+	consumergroupsFiltered = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "consumergroups", "filtered"),
+		"Amount of consumer groups that were excluded by the filter",
+		[]string{"broker"}, labels,
+	)
+
+	topicFiltered = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "topics", "filtered"),
+		"topics that were excluded by the filter",
+		[]string{"topic"}, labels,
+	)
+
 	if *logSarama {
 		sarama.Logger = log.New(os.Stdout, "[sarama] ", log.LstdFlags)
 	}
 
-	exporter, err := NewExporter(opts, *topicFilter, *groupFilter)
+	exporter, err := NewExporter(opts, *topicFilter, *groupFilter, *invertTopicFilter, *invertGroupFilter)
 	if err != nil {
 		plog.Fatalln(err)
 	}
