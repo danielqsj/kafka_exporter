@@ -75,6 +75,7 @@ type kafkaOpts struct {
 	kafkaVersion             string
 	useZooKeeperLag          bool
 	uriZookeeper             []string
+	zookeeperPath            string
 	labels                   string
 	metadataRefreshInterval  string
 }
@@ -183,7 +184,11 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 	}
 
 	if opts.useZooKeeperLag {
-		zookeeperClient, err = kazoo.NewKazoo(opts.uriZookeeper, nil)
+		conf := &kazoo.Config{
+			Chroot: opts.zookeeperPath,
+			Timeout: 1 * time.Second,
+		}
+		zookeeperClient, err = kazoo.NewKazoo(opts.uriZookeeper, conf)
 	}
 
 	interval, err := time.ParseDuration(opts.metadataRefreshInterval)
@@ -259,6 +264,26 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	if err != nil {
 		plog.Errorf("Cannot get topics: %v", err)
 		return
+	}
+
+
+	zkTopicsMap := map[string][]*kazoo.Consumergroup{} // {topic: []*kazoo.Consumergroup}
+	if e.useZooKeeperLag {
+		ConsumerGroups, err := e.zookeeperClient.Consumergroups()
+
+		if err != nil {
+			plog.Errorf("Cannot get consumer group %v", err)
+		}
+
+		for _, group := range ConsumerGroups {
+			topicList, err := group.Topics()
+			if err != nil {
+				plog.Errorf("Cannot get topic list from zk consumer group: %s %v", group.Name, err)
+			}
+			for _, tp := range topicList {
+				zkTopicsMap[tp.Name] = append(zkTopicsMap[tp.Name], group)
+			}
+		}
 	}
 
 	getTopicMetrics := func(topic string) {
@@ -345,16 +370,14 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 				}
 
 				if e.useZooKeeperLag {
-					ConsumerGroups, err := e.zookeeperClient.Consumergroups()
+					ConsumerGroups, ok := zkTopicsMap[topic]
 
-					if err != nil {
-						plog.Errorf("Cannot get consumer group %v", err)
+					if !ok {
+						continue
 					}
-
 					for _, group := range ConsumerGroups {
 						offset, _ := group.FetchOffset(topic, partition)
 						if offset > 0 {
-
 							consumerGroupLag := currentOffset - offset
 							ch <- prometheus.MustNewConstMetric(
 								consumergroupLagZookeeper, prometheus.GaugeValue, float64(consumerGroupLag), group.Name, topic, strconv.FormatInt(int64(partition), 10),
@@ -506,6 +529,7 @@ func main() {
 	kingpin.Flag("kafka.version", "Kafka broker version").Default(sarama.V1_0_0_0.String()).StringVar(&opts.kafkaVersion)
 	kingpin.Flag("use.consumelag.zookeeper", "if you need to use a group from zookeeper").Default("false").BoolVar(&opts.useZooKeeperLag)
 	kingpin.Flag("zookeeper.server", "Address (hosts) of zookeeper server.").Default("localhost:2181").StringsVar(&opts.uriZookeeper)
+	kingpin.Flag("zookeeper.path", "Zookeeper path, like '/kafka'. Default is empty.").Default("").StringVar(&opts.zookeeperPath)
 	kingpin.Flag("kafka.labels", "Kafka cluster name").Default("").StringVar(&opts.labels)
 	kingpin.Flag("refresh.metadata", "Metadata refresh interval").Default("30s").StringVar(&opts.metadataRefreshInterval)
 
@@ -630,12 +654,12 @@ func main() {
 	http.Handle(*metricsPath, promhttp.Handler())
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html>
-	        <head><title>Kafka Exporter</title></head>
-	        <body>
-	        <h1>Kafka Exporter</h1>
-	        <p><a href='` + *metricsPath + `'>Metrics</a></p>
-	        </body>
-	        </html>`))
+		<head><title>Kafka Exporter</title></head>
+		<body>
+		<h1>Kafka Exporter</h1>
+		<p><a href='` + *metricsPath + `'>Metrics</a></p>
+		</body>
+		</html>`))
 	})
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		// need more specific sarama check
