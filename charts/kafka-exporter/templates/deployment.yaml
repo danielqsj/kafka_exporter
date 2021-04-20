@@ -45,6 +45,7 @@ spec:
             {{- end }}
             - --sasl.username={{ .Values.kafkaExporter.sasl.username }}
             - --sasl.password={{ .Values.kafkaExporter.sasl.password }}
+            - --sasl.mechanism={{ .Values.kafkaExporter.sasl.mechanism }}
             {{- end }}
             {{- if .Values.kafkaExporter.tls.enabled}}
             - --tls.enabled
