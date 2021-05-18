@@ -400,9 +400,16 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		}
 		for _, group := range describeGroups.Groups {
 			offsetFetchRequest := sarama.OffsetFetchRequest{ConsumerGroup: group.GroupId, Version: 1}
-			for topic, partitions := range offset {
-				for partition := range partitions {
-					offsetFetchRequest.AddPartition(topic, partition)
+			for _, member := range group.Members {
+				assignment, err := member.GetMemberAssignment()
+				if err != nil {
+					plog.Errorf("Cannot get GetMemberAssignment of group member %v : %v", member, err)
+					return
+				}
+				for topic, partions := range assignment.Topics {
+					for _, partition := range partions {
+						offsetFetchRequest.AddPartition(topic, partition)
+					}
 				}
 			}
 			ch <- prometheus.MustNewConstMetric(
