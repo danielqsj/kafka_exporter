@@ -12,6 +12,7 @@ require (
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/krallistic/kazoo-go v0.0.0-20170526135507-a15279744f4e
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
+	github.com/pkg/errors v0.9.1
 	github.com/pkg/profile v1.2.1 // indirect
 	github.com/prometheus/client_golang v1.10.0
 	github.com/prometheus/common v0.20.0

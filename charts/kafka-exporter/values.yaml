@@ -27,6 +27,7 @@ kafkaExporter:
     handshake: true
     username: ""
     password: ""
+    mechanism: ""
 
   tls:
     enabled: false
