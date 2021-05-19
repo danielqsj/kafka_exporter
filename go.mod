@@ -15,7 +15,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/pkg/profile v1.2.1 // indirect
 	github.com/prometheus/client_golang v1.10.0
-	github.com/prometheus/common v0.24.0
+	github.com/prometheus/common v0.25.0
 	github.com/prometheus/procfs v0.6.0 // indirect
 	github.com/prometheus/promu v0.12.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
