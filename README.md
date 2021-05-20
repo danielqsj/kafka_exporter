@@ -106,6 +106,7 @@ This image is configurable using different flags
 | tls.insecure-skip-tls-verify | false      | If true, the server's certificate will not be checked for validity                                  |
 | topic.filter                 | .*         | Regex that determines which topics to collect                                                       |
 | group.filter                 | .*         | Regex that determines which consumer groups to collect                                              |
+| group.exclude                | ^$         | Regex that determines which consumer groups to exclude                                              |
 | web.listen-address           | :9308      | Address to listen on for web interface and telemetry                                                |
 | web.telemetry-path           | /metrics   | Path under which to expose metrics                                                                  |
 | log.level                    | info       | Only log messages with the given severity or above. Valid levels: [debug, info, warn, error, fatal] |
