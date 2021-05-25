@@ -547,6 +547,18 @@ func main() {
 		}
 	}
 
+	setup(*listenAddress, *metricsPath, *topicFilter, *groupFilter, *logSarama, opts, labels)
+}
+
+func setup(
+	listenAddress string,
+	metricsPath string,
+	topicFilter string,
+	groupFilter string,
+	logSarama bool,
+	opts kafkaOpts,
+	labels map[string]string,
+) {
 	clusterBrokers = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "brokers"),
 		"Number of Brokers in the Kafka Cluster.",
@@ -634,24 +646,24 @@ func main() {
 		[]string{"consumergroup"}, labels,
 	)
 
-	if *logSarama {
+	if logSarama {
 		sarama.Logger = log.New(os.Stdout, "[sarama] ", log.LstdFlags)
 	}
 
-	exporter, err := NewExporter(opts, *topicFilter, *groupFilter)
+	exporter, err := NewExporter(opts, topicFilter, groupFilter)
 	if err != nil {
 		plog.Fatalln(err)
 	}
 	defer exporter.client.Close()
 	prometheus.MustRegister(exporter)
 
-	http.Handle(*metricsPath, promhttp.Handler())
+	http.Handle(metricsPath, promhttp.Handler())
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html>
 	        <head><title>Kafka Exporter</title></head>
 	        <body>
 	        <h1>Kafka Exporter</h1>
-	        <p><a href='` + *metricsPath + `'>Metrics</a></p>
+	        <p><a href='` + metricsPath + `'>Metrics</a></p>
 	        </body>
 	        </html>`))
 	})
@@ -660,6 +672,6 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 
-	plog.Infoln("Listening on", *listenAddress)
-	plog.Fatal(http.ListenAndServe(*listenAddress, nil))
+	plog.Infoln("Listening on", listenAddress)
+	plog.Fatal(http.ListenAndServe(listenAddress, nil))
 }
