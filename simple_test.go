@@ -2,12 +2,14 @@ package main
 
 import (
 	"errors"
-	"github.com/Shopify/sarama"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/Shopify/sarama"
+	"github.com/prometheus/common/promlog"
 )
 
 var bootstrap_servers = []string{"localhost:9092"}
@@ -68,5 +70,7 @@ func runServer() {
 	opts.uriZookeeper = []string{"localhost:2181"}
 	opts.kafkaVersion = sarama.V1_0_0_0.String()
 	opts.metadataRefreshInterval = "30s"
-	setup("localhost:9304", "/metrics", ".*", ".*", false, opts, nil)
+	logConfig := &promlog.Config{}
+	logger := promlog.New(logConfig)
+	setup("localhost:9304", "/metrics", ".*", ".*", false, "", opts, nil, logger)
 }
