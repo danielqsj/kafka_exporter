@@ -99,6 +99,11 @@ This image is configurable using different flags
 | sasl.username                |            | SASL user name                                                                                      |
 | sasl.password                |            | SASL user password                                                                                  |
 | sasl.mechanism               |            | SASL mechanism can be plain, scram-sha512, scram-sha256
+| sasl.service-name            |            | Service name when using Kerberos Auth 
+| sasl.kerberos-config-path    |            | Kerberos config path 
+| sasl.realm                   |            | Kerberos realm 
+| sasl.keytab-path             |            | Kerberos keytab file path 
+| sasl.kerberos-auth-type      |            | Kerberos auth type. Either 'keytabAuth' or 'userAuth' 
 | tls.enabled                  | false      | Connect using TLS                                                                                   |
 | tls.ca-file                  |            | The optional certificate authority file for TLS client authentication                               |
 | tls.cert-file                |            | The optional certificate file for client authentication                                             |
