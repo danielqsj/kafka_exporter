@@ -537,7 +537,7 @@ func main() {
 	kingpin.Flag("sasl.service-name", "Kerberos service Name").Default("").StringVar(&opts.serviceName)
 	kingpin.Flag("sasl.kerberos-config-path", "Kerberos config path").Default("").StringVar(&opts.kerberosConfigPath)
 	kingpin.Flag("sasl.realm", "Kerberos realm").Default("").StringVar(&opts.realm)
-	kingpin.Flag("sasl.kerberos-auth-typego", "Kerberos auth type. Either keytab or user").Default("").StringVar(&opts.kerberosAuthType)
+	kingpin.Flag("sasl.kerberos-auth-type", "Kerberos auth type. Either keytab or user").Default("").StringVar(&opts.kerberosAuthType)
 	kingpin.Flag("sasl.keytab-path", "Kerberos keytab path").Default("").StringVar(&opts.keyTabPath)
 	kingpin.Flag("tls.enabled", "Connect using TLS.").Default("false").BoolVar(&opts.useTLS)
 	kingpin.Flag("tls.ca-file", "The optional certificate authority file for TLS client authentication.").Default("").StringVar(&opts.tlsCAFile)
