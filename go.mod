@@ -4,6 +4,8 @@ go 1.17
 
 require (
 	github.com/Shopify/sarama v1.29.1
+	github.com/go-kit/kit v0.10.0
+    github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/alecthomas/units v0.0.0-20210208195552-ff826a37aa15 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
@@ -19,9 +21,6 @@ require (
 	golang.org/x/sys v0.0.0-20210906170528-6f6e22806c34 // indirect
 	google.golang.org/protobuf v1.27.1 // indirect
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
-)
-
-require (
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
