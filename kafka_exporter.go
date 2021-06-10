@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -678,9 +679,6 @@ func main() {
 	kingpin.HelpFlag.Short('h')
 	kingpin.Parse()
 
-	glog.Infoln("Starting kafka_exporter", version.Info())
-	glog.Infoln("Build context", version.BuildContext())
-
 	labels := make(map[string]string)
 
 	// Protect against empty labels
@@ -705,6 +703,16 @@ func setup(
 	opts kafkaOpts,
 	labels map[string]string,
 ) {
+	if err := flag.Set("logtostderr", "true"); err != nil {
+		glog.Errorf("Error on setting logtostderr to true")
+	}
+	flag.Set("v", "0")
+	flag.Parse()
+	defer glog.Flush()
+
+	glog.Infoln("Starting kafka_exporter", version.Info())
+	glog.Infoln("Build context", version.BuildContext())
+
 	clusterBrokers = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "brokers"),
 		"Number of Brokers in the Kafka Cluster.",
