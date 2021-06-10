@@ -89,6 +89,7 @@ type kafkaOpts struct {
 	metadataRefreshInterval  string
 	topicWorkers             int
 	allowConcurrent          bool
+	verbosityLogLevel        int
 }
 
 // CanReadCertAndKey returns true if the certificate and key files already exists,
@@ -637,6 +638,7 @@ func main() {
 	kingpin.Flag("refresh.metadata", "Metadata refresh interval").Default("1m").StringVar(&opts.metadataRefreshInterval)
 	kingpin.Flag("concurrent.enable", "If true, all scrapes will trigger kafka operations otherwise, they will share results. WARN: This should be disabled on large clusters").Default("false").BoolVar(&opts.allowConcurrent)
 	kingpin.Flag("topic.workers", "Number of topic workers").Default("100").IntVar(&opts.topicWorkers)
+	kingpin.Flag("verbosity", "Verbosity log level").Default("0").IntVar(&opts.verbosityLogLevel)
 
 	plConfig := plog.Config{}
 	plogflag.AddFlags(kingpin.CommandLine, &plConfig)
@@ -671,7 +673,7 @@ func setup(
 	if err := flag.Set("logtostderr", "true"); err != nil {
 		glog.Errorf("Error on setting logtostderr to true")
 	}
-	flag.Set("v", "0")
+	flag.Set("v", strconv.Itoa(opts.verbosityLogLevel))
 	flag.Parse()
 	defer glog.Flush()
 
