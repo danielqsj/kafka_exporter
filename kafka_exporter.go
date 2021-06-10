@@ -610,35 +610,40 @@ func init() {
 	prometheus.MustRegister(version.NewCollector("kafka_exporter"))
 }
 
+func toFlag(name string, help string) *kingpin.FlagClause {
+	flag.CommandLine.String(name, "", help) // hack around flag.Parse and glog.init flags
+	return kingpin.Flag(name, help)
+}
+
 func main() {
 	var (
-		listenAddress = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9308").String()
-		metricsPath   = kingpin.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
-		topicFilter   = kingpin.Flag("topic.filter", "Regex that determines which topics to collect.").Default(".*").String()
-		groupFilter   = kingpin.Flag("group.filter", "Regex that determines which consumer groups to collect.").Default(".*").String()
-		logSarama     = kingpin.Flag("log.enable-sarama", "Turn on Sarama logging.").Default("false").Bool()
+		listenAddress = toFlag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9308").String()
+		metricsPath   = toFlag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
+		topicFilter   = toFlag("topic.filter", "Regex that determines which topics to collect.").Default(".*").String()
+		groupFilter   = toFlag("group.filter", "Regex that determines which consumer groups to collect.").Default(".*").String()
+		logSarama     = toFlag("log.enable-sarama", "Turn on Sarama logging.").Default("false").Bool()
 
 		opts = kafkaOpts{}
 	)
-	kingpin.Flag("kafka.server", "Address (host:port) of Kafka server.").Default("kafka:9092").StringsVar(&opts.uri)
-	kingpin.Flag("sasl.enabled", "Connect using SASL/PLAIN.").Default("false").BoolVar(&opts.useSASL)
-	kingpin.Flag("sasl.handshake", "Only set this to false if using a non-Kafka SASL proxy.").Default("true").BoolVar(&opts.useSASLHandshake)
-	kingpin.Flag("sasl.username", "SASL user name.").Default("").StringVar(&opts.saslUsername)
-	kingpin.Flag("sasl.password", "SASL user password.").Default("").StringVar(&opts.saslPassword)
-	kingpin.Flag("sasl.mechanism", "The SASL SCRAM SHA algorithm sha256 or sha512 as mechanism").Default("").StringVar(&opts.saslMechanism)
-	kingpin.Flag("tls.enabled", "Connect using TLS.").Default("false").BoolVar(&opts.useTLS)
-	kingpin.Flag("tls.ca-file", "The optional certificate authority file for TLS client authentication.").Default("").StringVar(&opts.tlsCAFile)
-	kingpin.Flag("tls.cert-file", "The optional certificate file for client authentication.").Default("").StringVar(&opts.tlsCertFile)
-	kingpin.Flag("tls.key-file", "The optional key file for client authentication.").Default("").StringVar(&opts.tlsKeyFile)
-	kingpin.Flag("tls.insecure-skip-tls-verify", "If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure.").Default("false").BoolVar(&opts.tlsInsecureSkipTLSVerify)
-	kingpin.Flag("kafka.version", "Kafka broker version").Default(sarama.V2_0_0_0.String()).StringVar(&opts.kafkaVersion)
-	kingpin.Flag("use.consumelag.zookeeper", "if you need to use a group from zookeeper").Default("false").BoolVar(&opts.useZooKeeperLag)
-	kingpin.Flag("zookeeper.server", "Address (hosts) of zookeeper server.").Default("localhost:2181").StringsVar(&opts.uriZookeeper)
-	kingpin.Flag("kafka.labels", "Kafka cluster name").Default("").StringVar(&opts.labels)
-	kingpin.Flag("refresh.metadata", "Metadata refresh interval").Default("1m").StringVar(&opts.metadataRefreshInterval)
-	kingpin.Flag("concurrent.enable", "If true, all scrapes will trigger kafka operations otherwise, they will share results. WARN: This should be disabled on large clusters").Default("false").BoolVar(&opts.allowConcurrent)
-	kingpin.Flag("topic.workers", "Number of topic workers").Default("100").IntVar(&opts.topicWorkers)
-	kingpin.Flag("verbosity", "Verbosity log level").Default("0").IntVar(&opts.verbosityLogLevel)
+	toFlag("kafka.server", "Address (host:port) of Kafka server.").Default("kafka:9092").StringsVar(&opts.uri)
+	toFlag("sasl.enabled", "Connect using SASL/PLAIN.").Default("false").BoolVar(&opts.useSASL)
+	toFlag("sasl.handshake", "Only set this to false if using a non-Kafka SASL proxy.").Default("true").BoolVar(&opts.useSASLHandshake)
+	toFlag("sasl.username", "SASL user name.").Default("").StringVar(&opts.saslUsername)
+	toFlag("sasl.password", "SASL user password.").Default("").StringVar(&opts.saslPassword)
+	toFlag("sasl.mechanism", "The SASL SCRAM SHA algorithm sha256 or sha512 as mechanism").Default("").StringVar(&opts.saslMechanism)
+	toFlag("tls.enabled", "Connect using TLS.").Default("false").BoolVar(&opts.useTLS)
+	toFlag("tls.ca-file", "The optional certificate authority file for TLS client authentication.").Default("").StringVar(&opts.tlsCAFile)
+	toFlag("tls.cert-file", "The optional certificate file for client authentication.").Default("").StringVar(&opts.tlsCertFile)
+	toFlag("tls.key-file", "The optional key file for client authentication.").Default("").StringVar(&opts.tlsKeyFile)
+	toFlag("tls.insecure-skip-tls-verify", "If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure.").Default("false").BoolVar(&opts.tlsInsecureSkipTLSVerify)
+	toFlag("kafka.version", "Kafka broker version").Default(sarama.V2_0_0_0.String()).StringVar(&opts.kafkaVersion)
+	toFlag("use.consumelag.zookeeper", "if you need to use a group from zookeeper").Default("false").BoolVar(&opts.useZooKeeperLag)
+	toFlag("zookeeper.server", "Address (hosts) of zookeeper server.").Default("localhost:2181").StringsVar(&opts.uriZookeeper)
+	toFlag("kafka.labels", "Kafka cluster name").Default("").StringVar(&opts.labels)
+	toFlag("refresh.metadata", "Metadata refresh interval").Default("1m").StringVar(&opts.metadataRefreshInterval)
+	toFlag("concurrent.enable", "If true, all scrapes will trigger kafka operations otherwise, they will share results. WARN: This should be disabled on large clusters").Default("false").BoolVar(&opts.allowConcurrent)
+	toFlag("topic.workers", "Number of topic workers").Default("100").IntVar(&opts.topicWorkers)
+	toFlag("verbosity", "Verbosity log level").Default("0").IntVar(&opts.verbosityLogLevel)
 
 	plConfig := plog.Config{}
 	plogflag.AddFlags(kingpin.CommandLine, &plConfig)
