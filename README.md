@@ -215,6 +215,17 @@ kafka_consumergroup_current_offset{consumergroup="KMOffsetCache-kafka-manager-38
 kafka_consumergroup_lag{consumergroup="KMOffsetCache-kafka-manager-3806276532-ml44w",partition="0",topic="__consumer_offsets"} 1
 ```
 
+Travis CI usage
+-------
+
+Travis CI is easy to setup, just add these env vars to the settings. This will create a crossbuild release, and publish the artifacts in your GitHub repository.
+
+GITHUB_TOKEN=`<your GitHub token>`
+
+TRAVIS_PULL_REQUEST=true
+
+TRAVIS_TAG=true
+
 Grafana Dashboard
 -------
 
