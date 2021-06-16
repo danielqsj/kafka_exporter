@@ -1,4 +1,4 @@
-module github.com/davidmparrott/kafka_exporter
+module github.com/davidmparrott/kafka_exporter/v2
 
 go 1.15
 
