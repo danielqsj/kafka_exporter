@@ -1,8 +1,12 @@
 package main
 
 import (
+	"log"
+	"net/http"
+	"os"
+
 	"github.com/Shopify/sarama"
-	"github.com/davidmparrott/kafka_exporter/exporter"
+	"github.com/davidmparrott/kafka_exporter/v2/exporter"
 	klog "github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -10,9 +14,6 @@ import (
 	"github.com/prometheus/common/version"
 	"github.com/rcrowley/go-metrics"
 	"gopkg.in/alecthomas/kingpin.v2"
-	"log"
-	"net/http"
-	"os"
 )
 
 func init() {
