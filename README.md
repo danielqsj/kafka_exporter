@@ -110,6 +110,7 @@ This image is configurable using different flags
 | web.telemetry-path           | /metrics   | Path under which to expose metrics                                                                  |
 | log.level                    | info       | Only log messages with the given severity or above. Valid levels: [debug, info, warn, error, fatal] |
 | log.enable-sarama            | false      | Turn on Sarama logging                                                                              |
+| metric.disable-sarama        | true       | Whether to disable sarama monitoring metrics or not                                                 |                                                                             |
 
 ### Notes
 

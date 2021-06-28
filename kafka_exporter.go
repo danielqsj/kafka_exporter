@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
+	prometheusmetrics "github.com/deathowl/go-metrics-prometheus"
 	"github.com/krallistic/kazoo-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -78,6 +79,7 @@ type kafkaOpts struct {
 	uriZookeeper             []string
 	labels                   string
 	metadataRefreshInterval  string
+	disableMetrics            bool
 }
 
 // CanReadCertAndKey returns true if the certificate and key files already exists,
@@ -526,6 +528,7 @@ func main() {
 	kingpin.Flag("zookeeper.server", "Address (hosts) of zookeeper server.").Default("localhost:2181").StringsVar(&opts.uriZookeeper)
 	kingpin.Flag("kafka.labels", "Kafka cluster name").Default("").StringVar(&opts.labels)
 	kingpin.Flag("refresh.metadata", "Metadata refresh interval").Default("30s").StringVar(&opts.metadataRefreshInterval)
+	kingpin.Flag("metric.disable-sarama", "Whether to disable sarama monitoring metrics or not").Default("true").BoolVar(&opts.disableMetrics)
 
 	plog.AddFlags(kingpin.CommandLine)
 	kingpin.Version(version.Print("kafka_exporter"))
@@ -655,6 +658,12 @@ func setup(
 		plog.Fatalln(err)
 	}
 	defer exporter.client.Close()
+	if !opts.disableMetrics {
+		metrics.UseNilMetrics = false
+		prometheusClient := prometheusmetrics.NewPrometheusProvider(exporter.client.Config().MetricRegistry, "sarama", "kafka", prometheus.DefaultRegisterer, 1*time.Second)
+		go prometheusClient.UpdatePrometheusMetrics()
+		// prometheusClient.UpdatePrometheusMetricsOnce()
+	}
 	prometheus.MustRegister(exporter)
 
 	http.Handle(metricsPath, promhttp.Handler())
