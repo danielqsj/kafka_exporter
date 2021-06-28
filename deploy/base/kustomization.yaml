@@ -1,0 +1,15 @@
+# ----------------------------------------------------
+# apiVersion and kind of Kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+commonLabels:
+  app: kafka-exporter
+
+resources:
+- deployment.yaml
+- service.yaml
+
+images:
+- name: danielqsj/kafka-exporter
+  newTag: latest
