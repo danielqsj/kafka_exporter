@@ -78,6 +78,12 @@ type kafkaOpts struct {
 	uriZookeeper             []string
 	labels                   string
 	metadataRefreshInterval  string
+	serviceName              string
+	kerberosConfigPath       string
+	realm                    string
+	keyTabPath               string
+	kerberosAuthType         string
+
 }
 
 // CanReadCertAndKey returns true if the certificate and key files already exists,
@@ -135,7 +141,19 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		case "scram-sha256":
 			config.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient { return &XDGSCRAMClient{HashGeneratorFcn: SHA256} }
 			config.Net.SASL.Mechanism = sarama.SASLMechanism(sarama.SASLTypeSCRAMSHA256)
-
+		case "gssapi":
+			config.Net.SASL.Mechanism = sarama.SASLMechanism(sarama.SASLTypeGSSAPI)
+			config.Net.SASL.GSSAPI.ServiceName = opts.serviceName
+			config.Net.SASL.GSSAPI.KerberosConfigPath = opts.kerberosConfigPath
+			config.Net.SASL.GSSAPI.Realm = opts.realm
+			config.Net.SASL.GSSAPI.Username = opts.saslUsername
+			if opts.kerberosAuthType == "keytabAuth" {
+				config.Net.SASL.GSSAPI.AuthType = sarama.KRB5_KEYTAB_AUTH
+				config.Net.SASL.GSSAPI.KeyTabPath = opts.keyTabPath
+			} else {
+				config.Net.SASL.GSSAPI.AuthType = sarama.KRB5_USER_AUTH
+				config.Net.SASL.GSSAPI.Password = opts.saslPassword
+			}
 		case "plain":
 		default:
 			return nil, fmt.Errorf(
@@ -516,6 +534,11 @@ func main() {
 	kingpin.Flag("sasl.username", "SASL user name.").Default("").StringVar(&opts.saslUsername)
 	kingpin.Flag("sasl.password", "SASL user password.").Default("").StringVar(&opts.saslPassword)
 	kingpin.Flag("sasl.mechanism", "The SASL SCRAM SHA algorithm sha256 or sha512 as mechanism").Default("").StringVar(&opts.saslMechanism)
+	kingpin.Flag("sasl.service-name", "Service name when using kerberos Auth").Default("").StringVar(&opts.serviceName)
+	kingpin.Flag("sasl.kerberos-config-path", "Kerberos config path").Default("").StringVar(&opts.kerberosConfigPath)
+	kingpin.Flag("sasl.realm", "Kerberos realm").Default("").StringVar(&opts.realm)
+	kingpin.Flag("sasl.kerberos-auth-type", "Kerberos auth type. Either 'keytabAuth' or 'userAuth'").Default("").StringVar(&opts.kerberosAuthType)
+	kingpin.Flag("sasl.keytab-path", "Kerberos keytab file path").Default("").StringVar(&opts.keyTabPath)
 	kingpin.Flag("tls.enabled", "Connect using TLS.").Default("false").BoolVar(&opts.useTLS)
 	kingpin.Flag("tls.ca-file", "The optional certificate authority file for TLS client authentication.").Default("").StringVar(&opts.tlsCAFile)
 	kingpin.Flag("tls.cert-file", "The optional certificate file for client authentication.").Default("").StringVar(&opts.tlsCertFile)
