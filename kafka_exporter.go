@@ -365,6 +365,9 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 
 	topicPartitionsMap := make(map[string][]int32)
 	offset := make(map[string]map[int32]int64)
+	// groupOffset is used for recording consumergroup offset by groupid, topic, partition on different brokers
+	// structure: groupOffset[broker.ID()][group.GroupId][topic][partition] = offsetFetchResponseBlock.Offset
+	// eg: groupOffset[1]["test_group"]["test_topic"][0] = 1
 	groupOffset := make(map[int32]map[string]map[string]map[int32]int64)
 
 	// metadata refresh control
