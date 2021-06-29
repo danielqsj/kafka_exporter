@@ -19,8 +19,10 @@ service:
 kafkaExporter:
   kafka:
     servers: []
-      # - kafka:9092
-    # version: "1.0.0"
+  zookeeper:
+    servers: []
+  additionalFlags: []
+    # - --use.consumelag.zookeeper
 
   sasl:
     enabled: false
