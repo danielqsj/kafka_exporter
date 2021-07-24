@@ -32,4 +32,8 @@ spec:
     {{- if .Values.prometheus.serviceMonitor.scrapeTimeout }}
     scrapeTimeout: {{ .Values.prometheus.serviceMonitor.scrapeTimeout }}
     {{- end }}
-{{- end }}
+    {{- if .Values.prometheus.serviceMonitor.metricRelabelings }}
+    metricRelabelings:
+    {{- toYaml .Values.prometheus.serviceMonitor.metricRelabelings | nindent 4 }}
+  {{- end }}
+  {{- end }}
