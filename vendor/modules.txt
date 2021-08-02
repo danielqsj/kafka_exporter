@@ -82,8 +82,6 @@ github.com/klauspost/compress/huff0
 github.com/klauspost/compress/snappy
 github.com/klauspost/compress/zstd
 github.com/klauspost/compress/zstd/internal/xxhash
-# github.com/konsorten/go-windows-terminal-sequences v1.0.3
-github.com/konsorten/go-windows-terminal-sequences
 # github.com/krallistic/kazoo-go v0.0.0-20170526135507-a15279744f4e
 ## explicit
 github.com/krallistic/kazoo-go
@@ -109,7 +107,6 @@ github.com/prometheus/client_model/go
 ## explicit
 github.com/prometheus/common/expfmt
 github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg
-github.com/prometheus/common/log
 github.com/prometheus/common/model
 github.com/prometheus/common/version
 # github.com/prometheus/procfs v0.6.0
@@ -124,8 +121,6 @@ github.com/prometheus/procfs/internal/util
 github.com/rcrowley/go-metrics
 # github.com/samuel/go-zookeeper v0.0.0-20190923202752-2cc03de413da
 github.com/samuel/go-zookeeper/zk
-# github.com/sirupsen/logrus v1.6.0
-github.com/sirupsen/logrus
 # github.com/xdg/scram v0.0.0-20180814205039-7eeb5667e42c
 ## explicit
 github.com/xdg/scram
@@ -146,8 +141,6 @@ golang.org/x/net/proxy
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-golang.org/x/sys/windows/registry
-golang.org/x/sys/windows/svc/eventlog
 # golang.org/x/text v0.3.6
 golang.org/x/text/transform
 golang.org/x/text/unicode/norm
