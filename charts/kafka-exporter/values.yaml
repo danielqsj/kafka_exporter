@@ -31,7 +31,7 @@ kafkaExporter:
 
   tls:
     enabled: false
-    insecure-skip-tls-verify: false
+    insecureSkipTlsVerify: false
     caFile: ""
     certFile: ""
     keyFile: ""
@@ -47,6 +47,7 @@ prometheus:
     interval: "30s"
     additionalLabels:
       app: kafka-exporter
+    metricRelabelings: {}
 
 labels: {}
 podLabels: {}

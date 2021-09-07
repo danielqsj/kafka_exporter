@@ -3,10 +3,9 @@ module github.com/danielqsj/kafka_exporter
 go 1.16
 
 require (
-	github.com/Shopify/sarama v1.28.0
+	github.com/Shopify/sarama v1.29.1
 	github.com/alecthomas/units v0.0.0-20210208195552-ff826a37aa15 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
-	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/krallistic/kazoo-go v0.0.0-20170526135507-a15279744f4e
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.0

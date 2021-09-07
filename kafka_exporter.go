@@ -82,7 +82,6 @@ type kafkaOpts struct {
 	realm                    string
 	keyTabPath               string
 	kerberosAuthType         string
-
 }
 
 // CanReadCertAndKey returns true if the certificate and key files already exists,
@@ -156,7 +155,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		case "plain":
 		default:
 			return nil, fmt.Errorf(
-				`invalid sasl mechanism "%s": can only be "scram-sha256", "scram-sha512" or "plain"`,
+				`invalid sasl mechanism "%s": can only be "scram-sha256", "scram-sha512", "gssapi" or "plain"`,
 				opts.saslMechanism,
 			)
 		}
@@ -424,14 +423,23 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		}
 		for _, group := range describeGroups.Groups {
 			offsetFetchRequest := sarama.OffsetFetchRequest{ConsumerGroup: group.GroupId, Version: 1}
-			for _, member := range group.Members {
-				assignment, err := member.GetMemberAssignment()
-				if err != nil {
-					log.Printf("error: Cannot get GetMemberAssignment of group member %v : %v", member, err)
-					return
+			if group.State == "Stable" {
+				for _, member := range group.Members {
+					assignment, err := member.GetMemberAssignment()
+					if err != nil {
+						log.Printf("Cannot get GetMemberAssignment of group member %v : %v", member, err)
+						return
+					}
+					for topic, partions := range assignment.Topics {
+						for _, partition := range partions {
+							offsetFetchRequest.AddPartition(topic, partition)
+						}
+					}
 				}
-				for topic, partions := range assignment.Topics {
-					for _, partition := range partions {
+			} else {
+				//not really know what topic/partition this consumer group subscribe, so ask for all
+				for topic, partitions := range offset {
+					for partition := range partitions {
 						offsetFetchRequest.AddPartition(topic, partition)
 					}
 				}
@@ -532,7 +540,7 @@ func main() {
 	kingpin.Flag("sasl.handshake", "Only set this to false if using a non-Kafka SASL proxy.").Default("true").BoolVar(&opts.useSASLHandshake)
 	kingpin.Flag("sasl.username", "SASL user name.").Default("").StringVar(&opts.saslUsername)
 	kingpin.Flag("sasl.password", "SASL user password.").Default("").StringVar(&opts.saslPassword)
-	kingpin.Flag("sasl.mechanism", "The SASL SCRAM SHA algorithm sha256 or sha512 as mechanism").Default("").StringVar(&opts.saslMechanism)
+	kingpin.Flag("sasl.mechanism", "The SASL SCRAM SHA algorithm sha256 or sha512 or gssapi as mechanism").Default("").StringVar(&opts.saslMechanism)
 	kingpin.Flag("sasl.service-name", "Service name when using kerberos Auth").Default("").StringVar(&opts.serviceName)
 	kingpin.Flag("sasl.kerberos-config-path", "Kerberos config path").Default("").StringVar(&opts.kerberosConfigPath)
 	kingpin.Flag("sasl.realm", "Kerberos realm").Default("").StringVar(&opts.realm)
