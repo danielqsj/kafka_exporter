@@ -234,6 +234,15 @@ If you like Kafka Exporter, please give me a star. This will help more people kn
 
 Please feel free to send me [pull requests](https://github.com/danielqsj/kafka_exporter/pulls).
 
+Contributors ✨
+----------
+
+Thanks goes to these wonderful people:
+
+<a href="https://github.com/danielqsj/kafka_exporter/graphs/contributors">
+<img src="https://contrib.rocks/image?repo=danielqsj/kafka_exporter" />
+</a>
+
 Donation
 --------
 
