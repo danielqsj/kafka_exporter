@@ -104,11 +104,14 @@ This image is configurable using different flags
 | sasl.realm                   |                | Kerberos realm                                                                                                                         |
 | sasl.keytab-path             |                | Kerberos keytab file path                                                                                                              |
 | sasl.kerberos-auth-type      |                | Kerberos auth type. Either 'keytabAuth' or 'userAuth'                                                                                  |
-| tls.enabled                  | false          | Connect using TLS                                                                                                                      |
-| tls.ca-file                  |                | The optional certificate authority file for TLS client authentication                                                                  |
-| tls.cert-file                |                | The optional certificate file for client authentication                                                                                |
-| tls.key-file                 |                | The optional key file for client authentication                                                                                        |
+| tls.enabled                  | false          | Connect to Kafka using TLS                                                                                                                      |
+| tls.ca-file                  |                | The optional certificate authority file for Kafka TLS client authentication                                                                  |
+| tls.cert-file                |                | The optional certificate file for Kafka client authentication                                                                                |
+| tls.key-file                 |                | The optional key file for Kafka client authentication                                                                                        |
 | tls.insecure-skip-tls-verify | false          | If true, the server's certificate will not be checked for validity                                                                     |
+| server.tls.enabled                  | false          | Enable TLS for web server                                                                                                                      |
+| server.tls.cert-file                |                | The certificate file for the web server                                                                                |
+| server.tls.key-file                 |                | The key file for the web server                                                                                        |
 | topic.filter                 | .*             | Regex that determines which topics to collect                                                                                          |
 | group.filter                 | .*             | Regex that determines which consumer groups to collect                                                                                 |
 | web.listen-address           | :9308          | Address to listen on for web interface and telemetry                                                                                   |
