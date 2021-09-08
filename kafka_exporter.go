@@ -58,6 +58,7 @@ type Exporter struct {
 	zookeeperClient         *kazoo.Kazoo
 	nextMetadataRefresh     time.Time
 	metadataRefreshInterval time.Duration
+	offsetShowAll           bool
 }
 
 type kafkaOpts struct {
@@ -82,6 +83,7 @@ type kafkaOpts struct {
 	realm                    string
 	keyTabPath               string
 	kerberosAuthType         string
+	offsetShowAll            bool
 }
 
 // CanReadCertAndKey returns true if the certificate and key files already exists,
@@ -233,6 +235,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		zookeeperClient:         zookeeperClient,
 		nextMetadataRefresh:     time.Now(),
 		metadataRefreshInterval: interval,
+		offsetShowAll:           opts.offsetShowAll,
 	}, nil
 }
 
@@ -423,7 +426,13 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		}
 		for _, group := range describeGroups.Groups {
 			offsetFetchRequest := sarama.OffsetFetchRequest{ConsumerGroup: group.GroupId, Version: 1}
-			if group.State == "Stable" {
+			if e.offsetShowAll {
+				for topic, partitions := range offset {
+					for partition := range partitions {
+						offsetFetchRequest.AddPartition(topic, partition)
+					}
+				}
+			} else {
 				for _, member := range group.Members {
 					assignment, err := member.GetMemberAssignment()
 					if err != nil {
@@ -434,13 +443,6 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 						for _, partition := range partions {
 							offsetFetchRequest.AddPartition(topic, partition)
 						}
-					}
-				}
-			} else {
-				//not really know what topic/partition this consumer group subscribe, so ask for all
-				for topic, partitions := range offset {
-					for partition := range partitions {
-						offsetFetchRequest.AddPartition(topic, partition)
 					}
 				}
 			}
@@ -556,6 +558,7 @@ func main() {
 	kingpin.Flag("zookeeper.server", "Address (hosts) of zookeeper server.").Default("localhost:2181").StringsVar(&opts.uriZookeeper)
 	kingpin.Flag("kafka.labels", "Kafka cluster name").Default("").StringVar(&opts.labels)
 	kingpin.Flag("refresh.metadata", "Metadata refresh interval").Default("30s").StringVar(&opts.metadataRefreshInterval)
+	kingpin.Flag("offset.show-all", "Whether show the offset/lag for all consumer group, otherwise, only show connected consumer groups").Default("true").BoolVar(&opts.offsetShowAll)
 
 	kingpin.Version(version.Print("kafka_exporter"))
 	kingpin.HelpFlag.Short('h')
