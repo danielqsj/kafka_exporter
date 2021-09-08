@@ -90,31 +90,39 @@ Flags
 
 This image is configurable using different flags
 
-| Flag name                    | Default    | Description                                                                                         |
-| ---------------------------- | ---------- | --------------------------------------------------------------------------------------------------- |
-| kafka.server                 | kafka:9092 | Addresses (host:port) of Kafka server                                                               |
-| kafka.version                | 1.0.0      | Kafka broker version                                                                                |
-| sasl.enabled                 | false      | Connect using SASL/PLAIN                                                                            |
-| sasl.handshake               | true       | Only set this to false if using a non-Kafka SASL proxy                                              |
-| sasl.username                |            | SASL user name                                                                                      |
-| sasl.password                |            | SASL user password                                                                                  |
-| sasl.mechanism               |            | SASL mechanism can be plain, scram-sha512, scram-sha256
-| sasl.service-name            |            | Service name when using Kerberos Auth 
-| sasl.kerberos-config-path    |            | Kerberos config path 
-| sasl.realm                   |            | Kerberos realm 
-| sasl.keytab-path             |            | Kerberos keytab file path 
-| sasl.kerberos-auth-type      |            | Kerberos auth type. Either 'keytabAuth' or 'userAuth' 
-| tls.enabled                  | false      | Connect using TLS                                                                                   |
-| tls.ca-file                  |            | The optional certificate authority file for TLS client authentication                               |
-| tls.cert-file                |            | The optional certificate file for client authentication                                             |
-| tls.key-file                 |            | The optional key file for client authentication                                                     |
-| tls.insecure-skip-tls-verify | false      | If true, the server's certificate will not be checked for validity                                  |
-| topic.filter                 | .*         | Regex that determines which topics to collect                                                       |
-| group.filter                 | .*         | Regex that determines which consumer groups to collect                                              |
-| web.listen-address           | :9308      | Address to listen on for web interface and telemetry                                                |
-| web.telemetry-path           | /metrics   | Path under which to expose metrics                                                                  |
-| log.level                    | info       | Only log messages with the given severity or above. Valid levels: [debug, info, warn, error, fatal] |
-| log.enable-sarama            | false      | Turn on Sarama logging                                                                              |
+| Flag name                    | Default        | Description                                                                                                                            |
+|------------------------------|----------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| kafka.server                 | kafka:9092     | Addresses (host:port) of Kafka server                                                                                                  |
+| kafka.version                | 1.0.0          | Kafka broker version                                                                                                                   |
+| sasl.enabled                 | false          | Connect using SASL/PLAIN                                                                                                               |
+| sasl.handshake               | true           | Only set this to false if using a non-Kafka SASL proxy                                                                                 |
+| sasl.username                |                | SASL user name                                                                                                                         |
+| sasl.password                |                | SASL user password                                                                                                                     |
+| sasl.mechanism               |                | SASL mechanism can be plain, scram-sha512, scram-sha256                                                                                |
+| sasl.service-name            |                | Service name when using Kerberos Auth                                                                                                  |
+| sasl.kerberos-config-path    |                | Kerberos config path                                                                                                                   |
+| sasl.realm                   |                | Kerberos realm                                                                                                                         |
+| sasl.keytab-path             |                | Kerberos keytab file path                                                                                                              |
+| sasl.kerberos-auth-type      |                | Kerberos auth type. Either 'keytabAuth' or 'userAuth'                                                                                  |
+| tls.enabled                  | false          | Connect using TLS                                                                                                                      |
+| tls.ca-file                  |                | The optional certificate authority file for TLS client authentication                                                                  |
+| tls.cert-file                |                | The optional certificate file for client authentication                                                                                |
+| tls.key-file                 |                | The optional key file for client authentication                                                                                        |
+| tls.insecure-skip-tls-verify | false          | If true, the server's certificate will not be checked for validity                                                                     |
+| topic.filter                 | .*             | Regex that determines which topics to collect                                                                                          |
+| group.filter                 | .*             | Regex that determines which consumer groups to collect                                                                                 |
+| web.listen-address           | :9308          | Address to listen on for web interface and telemetry                                                                                   |
+| web.telemetry-path           | /metrics       | Path under which to expose metrics                                                                                                     |
+| log.enable-sarama            | false          | Turn on Sarama logging                                                                                                                 |
+| use.consumelag.zookeeper     | false          | if you need to use a group from zookeeper                                                                                              |
+| zookeeper.server             | localhost:2181 | Address (hosts) of zookeeper server                                                                                                    |
+| kafka.labels                 |                | Kafka cluster name                                                                                                                     |
+| refresh.metadata             | 30s            | Metadata refresh interval                                                                                                              |
+| offset.show-all              | true           | Whether show the offset/lag for all consumer group, otherwise, only show connected consumer groups                                     |
+| concurrent.enable            | false          | If true, all scrapes will trigger kafka operations otherwise, they will share results. WARN: This should be disabled on large clusters |
+| topic.workers                | 100            | Number of topic workers                                                                                                                |
+| verbosity                    | 0              | Verbosity log level                                                                                                                    |
+
 
 ### Notes
 

@@ -832,7 +832,7 @@ func setup(
 		// need more specific sarama check
 		w.Write([]byte("ok"))
 	})
-	
+
 	glog.Infoln("Listening on", listenAddress)
 	glog.Fatal(http.ListenAndServe(listenAddress, nil))
 }
