@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	glog "github.com/golang/glog"
+	"github.com/golang/glog"
 	"github.com/krallistic/kazoo-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -676,7 +676,6 @@ func main() {
 	toFlag("kafka.labels", "Kafka cluster name").Default("").StringVar(&opts.labels)
 	toFlag("refresh.metadata", "Metadata refresh interval").Default("30s").StringVar(&opts.metadataRefreshInterval)
 	toFlag("offset.show-all", "Whether show the offset/lag for all consumer group, otherwise, only show connected consumer groups").Default("true").BoolVar(&opts.offsetShowAll)
-	toFlag("refresh.metadata", "Metadata refresh interval").Default("1m").StringVar(&opts.metadataRefreshInterval)
 	toFlag("concurrent.enable", "If true, all scrapes will trigger kafka operations otherwise, they will share results. WARN: This should be disabled on large clusters").Default("false").BoolVar(&opts.allowConcurrent)
 	toFlag("topic.workers", "Number of topic workers").Default("100").IntVar(&opts.topicWorkers)
 	toFlag("verbosity", "Verbosity log level").Default("0").IntVar(&opts.verbosityLogLevel)
