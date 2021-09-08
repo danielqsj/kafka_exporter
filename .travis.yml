@@ -3,7 +3,7 @@ sudo: required
 language: go
 
 go:
-- 1.16
+- 1.17
 
 env:
 - GOFLAGS="-mod=readonly"

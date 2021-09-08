@@ -31,12 +31,13 @@ vet:
 
 build: promu
 	@echo ">> building binaries"
-	@$(PROMU) build --prefix $(PREFIX)
 	@$(GO) mod vendor
+	@$(PROMU) build --prefix $(PREFIX)
+
 
 crossbuild: promu
 	@echo ">> crossbuilding binaries"
-	@$(PROMU) crossbuild --go=1.16
+	@$(PROMU) crossbuild --go=1.17
 
 tarball: promu
 	@echo ">> building release tarball"
