@@ -105,6 +105,7 @@ This image is configurable using different flags
 | sasl.keytab-path             |                | Kerberos keytab file path                                                                                                              |
 | sasl.kerberos-auth-type      |                | Kerberos auth type. Either 'keytabAuth' or 'userAuth'                                                                                  |
 | tls.enabled                  | false          | Connect to Kafka using TLS                                                                                                                      |
+| tls.server-name                  |                | Used to verify the hostname on the returned certificates unless tls.insecure-skip-tls-verify is given. The kafka server's name should be given                                                                  |
 | tls.ca-file                  |                | The optional certificate authority file for Kafka TLS client authentication                                                                  |
 | tls.cert-file                |                | The optional certificate file for Kafka client authentication                                                                                |
 | tls.key-file                 |                | The optional key file for Kafka client authentication                                                                                        |
