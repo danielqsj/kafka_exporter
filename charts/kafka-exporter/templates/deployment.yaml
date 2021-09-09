@@ -57,11 +57,8 @@ spec:
             - --tls.key-file=/etc/tls-certs/key-file
             {{- end }}
             {{- end }}
-            {{- if .Values.kafkaExporter.log }}
-            - --log.level={{ .Values.kafkaExporter.log.level }}
             {{- if .Values.kafkaExporter.log.enableSarama }}
             - --log.enable-sarama
-            {{- end }}
             {{- end }}
           ports:
             - name: metrics
