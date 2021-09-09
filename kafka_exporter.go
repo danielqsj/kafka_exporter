@@ -79,6 +79,7 @@ type kafkaOpts struct {
 	saslPassword             string
 	saslMechanism            string
 	useTLS                   bool
+	tlsServerName            string
 	tlsCAFile                string
 	tlsCertFile              string
 	tlsKeyFile               string
@@ -194,6 +195,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		config.Net.TLS.Enable = true
 
 		config.Net.TLS.Config = &tls.Config{
+			ServerName:         opts.tlsServerName,
 			RootCAs:            x509.NewCertPool(),
 			InsecureSkipVerify: opts.tlsInsecureSkipTLSVerify,
 		}
@@ -669,6 +671,7 @@ func main() {
 	toFlag("sasl.kerberos-auth-type", "Kerberos auth type. Either 'keytabAuth' or 'userAuth'").Default("").StringVar(&opts.kerberosAuthType)
 	toFlag("sasl.keytab-path", "Kerberos keytab file path").Default("").StringVar(&opts.keyTabPath)
 	toFlag("tls.enabled", "Connect to Kafka using TLS.").Default("false").BoolVar(&opts.useTLS)
+	toFlag("tls.server-name", "Used to verify the hostname on the returned certificates unless tls.insecure-skip-tls-verify is given. The kafka server's name should be given.").Default("").StringVar(&opts.tlsServerName)
 	toFlag("tls.ca-file", "The optional certificate authority file for Kafka TLS client authentication.").Default("").StringVar(&opts.tlsCAFile)
 	toFlag("tls.cert-file", "The optional certificate file for Kafka client authentication.").Default("").StringVar(&opts.tlsCertFile)
 	toFlag("tls.key-file", "The optional key file for Kafka client authentication.").Default("").StringVar(&opts.tlsKeyFile)
