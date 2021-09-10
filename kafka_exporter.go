@@ -84,6 +84,8 @@ type kafkaOpts struct {
 	tlsCertFile              string
 	tlsKeyFile               string
 	serverUseTLS             bool
+	serverMutualAuthEnabled  bool
+	serverTlsCAFile          string
 	serverTlsCertFile        string
 	serverTlsKeyFile         string
 	tlsInsecureSkipTLSVerify bool
@@ -676,6 +678,8 @@ func main() {
 	toFlag("tls.cert-file", "The optional certificate file for Kafka client authentication.").Default("").StringVar(&opts.tlsCertFile)
 	toFlag("tls.key-file", "The optional key file for Kafka client authentication.").Default("").StringVar(&opts.tlsKeyFile)
 	toFlag("server.tls.enabled", "Enable TLS for web server.").Default("false").BoolVar(&opts.serverUseTLS)
+	toFlag("server.tls.mutual-auth-enabled", "Enable TLS client mutual authentication.").Default("false").BoolVar(&opts.serverMutualAuthEnabled)
+	toFlag("server.tls.ca-file", "The certificate authority file for the web server.").Default("").StringVar(&opts.serverTlsCAFile)
 	toFlag("server.tls.cert-file", "The certificate file for the web server.").Default("").StringVar(&opts.serverTlsCertFile)
 	toFlag("server.tls.key-file", "The key file for the web server.").Default("").StringVar(&opts.serverTlsKeyFile)
 	toFlag("tls.insecure-skip-tls-verify", "If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure.").Default("false").BoolVar(&opts.tlsInsecureSkipTLSVerify)
@@ -844,21 +848,45 @@ func setup(
 
 	if opts.serverUseTLS {
 		glog.Infoln("Listening on HTTPS", listenAddress)
+
+		_, err := CanReadCertAndKey(opts.serverTlsCertFile, opts.serverTlsKeyFile)
+		if err != nil {
+			glog.Error("error reading server cert and key")
+		}
+
+		clientAuthType := tls.NoClientCert
+		if opts.serverMutualAuthEnabled {
+			clientAuthType = tls.RequireAndVerifyClientCert
+		}
+
+		certPool := x509.NewCertPool()
+		if opts.serverTlsCAFile != "" {
+			if caCert, err := ioutil.ReadFile(opts.serverTlsCAFile); err == nil {
+				certPool.AppendCertsFromPEM(caCert)
+			} else {
+				glog.Error("error reading server ca")
+			}
+		}
+
 		tlsConfig := &tls.Config{
+			ClientCAs:                certPool,
+			ClientAuth:               clientAuthType,
 			MinVersion:               tls.VersionTLS12,
 			CurvePreferences:         []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
 			PreferServerCipherSuites: true,
 			CipherSuites: []uint16{
 				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
 				tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+				tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
 				tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
 				tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+				tls.TLS_RSA_WITH_AES_128_CBC_SHA256,
 			},
 		}
 		server := &http.Server{
-			Addr:         listenAddress,
-			TLSConfig:    tlsConfig,
-			TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler), 0),
+			Addr:      listenAddress,
+			TLSConfig: tlsConfig,
 		}
 		glog.Fatal(server.ListenAndServeTLS(opts.serverTlsCertFile, opts.serverTlsKeyFile))
 	} else {

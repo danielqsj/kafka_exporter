@@ -111,6 +111,8 @@ This image is configurable using different flags
 | tls.key-file                 |                | The optional key file for Kafka client authentication                                                                                        |
 | tls.insecure-skip-tls-verify | false          | If true, the server's certificate will not be checked for validity                                                                     |
 | server.tls.enabled                  | false          | Enable TLS for web server                                                                                                                      |
+| server.tls.mutual-auth-enabled                  | false          | Enable TLS client mutual authentication                                                                                                                      |
+| server.tls.ca-file                |                | The certificate authority file for the web server                                                                                |
 | server.tls.cert-file                |                | The certificate file for the web server                                                                                |
 | server.tls.key-file                 |                | The key file for the web server                                                                                        |
 | topic.filter                 | .*             | Regex that determines which topics to collect                                                                                          |
