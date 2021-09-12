@@ -37,7 +37,7 @@ kafkaExporter:
     keyFile: ""
 
   log:
-    level: info
+    verbosity: 0
     enableSarama: false
 
 prometheus:
