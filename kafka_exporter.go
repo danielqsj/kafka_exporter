@@ -33,6 +33,13 @@ const (
 	clientID  = "kafka_exporter"
 )
 
+const (
+	OFF = 0
+	INFO = 1
+	DEBUG = 2
+	TRACE = 3
+)
+
 var (
 	clusterBrokers                     *prometheus.Desc
 	topicPartitions                    *prometheus.Desc
@@ -218,7 +225,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 	}
 
 	if opts.useZooKeeperLag {
-		glog.Infoln("Using zookeeper lag, so connecting to zookeeper")
+		glog.V(DEBUG).Infoln("Using zookeeper lag, so connecting to zookeeper")
 		zookeeperClient, err = kazoo.NewKazoo(opts.uriZookeeper, nil)
 		if err != nil {
 			return nil, errors.Wrap(err, "error connecting to zookeeper")
@@ -238,7 +245,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		return nil, errors.Wrap(err, "Error Init Kafka Client")
 	}
 
-	glog.Infoln("Done Init Clients")
+	glog.V(TRACE).Infoln("Done Init Clients")
 	// Init our exporter.
 	return &Exporter{
 		client:                  client,
@@ -302,7 +309,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		e.sgWaitCh = make(chan struct{})
 		go e.collectChans(e.sgWaitCh)
 	} else {
-		glog.Info("concurrent calls detected, waiting for first to finish")
+		glog.V(TRACE).Info("concurrent calls detected, waiting for first to finish")
 	}
 	// Put in another variable to ensure not overwriting it in another Collect once we wait
 	waiter := e.sgWaitCh
@@ -350,7 +357,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	now := time.Now()
 
 	if now.After(e.nextMetadataRefresh) {
-		glog.Info("Refreshing client metadata")
+		glog.V(DEBUG).Info("Refreshing client metadata")
 
 		if err := e.client.RefreshMetadata(); err != nil {
 			glog.Errorf("Cannot refresh topics, using cached data: %v", err)
@@ -621,7 +628,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 		}
 	}
 
-	glog.Info("Fetching consumer group metrics")
+	glog.V(DEBUG).Info("Fetching consumer group metrics")
 	if len(e.client.Brokers()) > 0 {
 		for _, broker := range e.client.Brokers() {
 			wg.Add(1)
@@ -717,8 +724,8 @@ func setup(
 	flag.Parse()
 	defer glog.Flush()
 
-	glog.Infoln("Starting kafka_exporter", version.Info())
-	glog.Infoln("Build context", version.BuildContext())
+	glog.V(INFO).Infoln("Starting kafka_exporter", version.Info())
+	glog.V(DEBUG).Infoln("Build context", version.BuildContext())
 
 	clusterBrokers = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "brokers"),
@@ -833,6 +840,6 @@ func setup(
 		w.Write([]byte("ok"))
 	})
 
-	glog.Infoln("Listening on", listenAddress)
+	glog.V(INFO).Infoln("Listening on", listenAddress)
 	glog.Fatal(http.ListenAndServe(listenAddress, nil))
 }
