@@ -93,7 +93,7 @@ This image is configurable using different flags
 | Flag name                    | Default        | Description                                                                                                                            |
 |------------------------------|----------------|----------------------------------------------------------------------------------------------------------------------------------------|
 | kafka.server                 | kafka:9092     | Addresses (host:port) of Kafka server                                                                                                  |
-| kafka.version                | 1.0.0          | Kafka broker version                                                                                                                   |
+| kafka.version                | 2.0.0          | Kafka broker version                                                                                                                   |
 | sasl.enabled                 | false          | Connect using SASL/PLAIN                                                                                                               |
 | sasl.handshake               | true           | Only set this to false if using a non-Kafka SASL proxy                                                                                 |
 | sasl.username                |                | SASL user name                                                                                                                         |
@@ -104,11 +104,17 @@ This image is configurable using different flags
 | sasl.realm                   |                | Kerberos realm                                                                                                                         |
 | sasl.keytab-path             |                | Kerberos keytab file path                                                                                                              |
 | sasl.kerberos-auth-type      |                | Kerberos auth type. Either 'keytabAuth' or 'userAuth'                                                                                  |
-| tls.enabled                  | false          | Connect using TLS                                                                                                                      |
-| tls.ca-file                  |                | The optional certificate authority file for TLS client authentication                                                                  |
-| tls.cert-file                |                | The optional certificate file for client authentication                                                                                |
-| tls.key-file                 |                | The optional key file for client authentication                                                                                        |
+| tls.enabled                  | false          | Connect to Kafka using TLS                                                                                                                      |
+| tls.server-name                  |                | Used to verify the hostname on the returned certificates unless tls.insecure-skip-tls-verify is given. The kafka server's name should be given                                                                  |
+| tls.ca-file                  |                | The optional certificate authority file for Kafka TLS client authentication                                                                  |
+| tls.cert-file                |                | The optional certificate file for Kafka client authentication                                                                                |
+| tls.key-file                 |                | The optional key file for Kafka client authentication                                                                                        |
 | tls.insecure-skip-tls-verify | false          | If true, the server's certificate will not be checked for validity                                                                     |
+| server.tls.enabled                  | false          | Enable TLS for web server                                                                                                                      |
+| server.tls.mutual-auth-enabled                  | false          | Enable TLS client mutual authentication                                                                                                                      |
+| server.tls.ca-file                |                | The certificate authority file for the web server                                                                                |
+| server.tls.cert-file                |                | The certificate file for the web server                                                                                |
+| server.tls.key-file                 |                | The key file for the web server                                                                                        |
 | topic.filter                 | .*             | Regex that determines which topics to collect                                                                                          |
 | group.filter                 | .*             | Regex that determines which consumer groups to collect                                                                                 |
 | web.listen-address           | :9308          | Address to listen on for web interface and telemetry                                                                                   |
