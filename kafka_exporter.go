@@ -85,9 +85,15 @@ type kafkaOpts struct {
 	saslPassword             string
 	saslMechanism            string
 	useTLS                   bool
+	tlsServerName            string
 	tlsCAFile                string
 	tlsCertFile              string
 	tlsKeyFile               string
+	serverUseTLS             bool
+	serverMutualAuthEnabled  bool
+	serverTlsCAFile          string
+	serverTlsCertFile        string
+	serverTlsKeyFile         string
 	tlsInsecureSkipTLSVerify bool
 	kafkaVersion             string
 	useZooKeeperLag          bool
@@ -197,6 +203,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		config.Net.TLS.Enable = true
 
 		config.Net.TLS.Config = &tls.Config{
+			ServerName:         opts.tlsServerName,
 			RootCAs:            x509.NewCertPool(),
 			InsecureSkipVerify: opts.tlsInsecureSkipTLSVerify,
 		}
@@ -671,10 +678,16 @@ func main() {
 	toFlag("sasl.realm", "Kerberos realm").Default("").StringVar(&opts.realm)
 	toFlag("sasl.kerberos-auth-type", "Kerberos auth type. Either 'keytabAuth' or 'userAuth'").Default("").StringVar(&opts.kerberosAuthType)
 	toFlag("sasl.keytab-path", "Kerberos keytab file path").Default("").StringVar(&opts.keyTabPath)
-	toFlag("tls.enabled", "Connect using TLS.").Default("false").BoolVar(&opts.useTLS)
-	toFlag("tls.ca-file", "The optional certificate authority file for TLS client authentication.").Default("").StringVar(&opts.tlsCAFile)
-	toFlag("tls.cert-file", "The optional certificate file for client authentication.").Default("").StringVar(&opts.tlsCertFile)
-	toFlag("tls.key-file", "The optional key file for client authentication.").Default("").StringVar(&opts.tlsKeyFile)
+	toFlag("tls.enabled", "Connect to Kafka using TLS.").Default("false").BoolVar(&opts.useTLS)
+	toFlag("tls.server-name", "Used to verify the hostname on the returned certificates unless tls.insecure-skip-tls-verify is given. The kafka server's name should be given.").Default("").StringVar(&opts.tlsServerName)
+	toFlag("tls.ca-file", "The optional certificate authority file for Kafka TLS client authentication.").Default("").StringVar(&opts.tlsCAFile)
+	toFlag("tls.cert-file", "The optional certificate file for Kafka client authentication.").Default("").StringVar(&opts.tlsCertFile)
+	toFlag("tls.key-file", "The optional key file for Kafka client authentication.").Default("").StringVar(&opts.tlsKeyFile)
+	toFlag("server.tls.enabled", "Enable TLS for web server.").Default("false").BoolVar(&opts.serverUseTLS)
+	toFlag("server.tls.mutual-auth-enabled", "Enable TLS client mutual authentication.").Default("false").BoolVar(&opts.serverMutualAuthEnabled)
+	toFlag("server.tls.ca-file", "The certificate authority file for the web server.").Default("").StringVar(&opts.serverTlsCAFile)
+	toFlag("server.tls.cert-file", "The certificate file for the web server.").Default("").StringVar(&opts.serverTlsCertFile)
+	toFlag("server.tls.key-file", "The key file for the web server.").Default("").StringVar(&opts.serverTlsKeyFile)
 	toFlag("tls.insecure-skip-tls-verify", "If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure.").Default("false").BoolVar(&opts.tlsInsecureSkipTLSVerify)
 	toFlag("kafka.version", "Kafka broker version").Default(sarama.V2_0_0_0.String()).StringVar(&opts.kafkaVersion)
 	toFlag("use.consumelag.zookeeper", "if you need to use a group from zookeeper").Default("false").BoolVar(&opts.useZooKeeperLag)
@@ -839,6 +852,51 @@ func setup(
 		w.Write([]byte("ok"))
 	})
 
-	glog.V(INFO).Infoln("Listening on", listenAddress)
-	glog.Fatal(http.ListenAndServe(listenAddress, nil))
+	if opts.serverUseTLS {
+		glog.V(INFO).Infoln("Listening on HTTPS", listenAddress)
+
+		_, err := CanReadCertAndKey(opts.serverTlsCertFile, opts.serverTlsKeyFile)
+		if err != nil {
+			glog.Error("error reading server cert and key")
+		}
+
+		clientAuthType := tls.NoClientCert
+		if opts.serverMutualAuthEnabled {
+			clientAuthType = tls.RequireAndVerifyClientCert
+		}
+
+		certPool := x509.NewCertPool()
+		if opts.serverTlsCAFile != "" {
+			if caCert, err := ioutil.ReadFile(opts.serverTlsCAFile); err == nil {
+				certPool.AppendCertsFromPEM(caCert)
+			} else {
+				glog.Error("error reading server ca")
+			}
+		}
+
+		tlsConfig := &tls.Config{
+			ClientCAs:                certPool,
+			ClientAuth:               clientAuthType,
+			MinVersion:               tls.VersionTLS12,
+			CurvePreferences:         []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
+			PreferServerCipherSuites: true,
+			CipherSuites: []uint16{
+				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+				tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+				tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
+				tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
+				tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+				tls.TLS_RSA_WITH_AES_128_CBC_SHA256,
+			},
+		}
+		server := &http.Server{
+			Addr:      listenAddress,
+			TLSConfig: tlsConfig,
+		}
+		glog.Fatal(server.ListenAndServeTLS(opts.serverTlsCertFile, opts.serverTlsKeyFile))
+	} else {
+		glog.V(INFO).Infoln("Listening on HTTP", listenAddress)
+		glog.Fatal(http.ListenAndServe(listenAddress, nil))
+	}
 }
