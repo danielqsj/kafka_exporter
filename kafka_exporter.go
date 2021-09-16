@@ -302,6 +302,8 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- consumergroupLagSum
 }
 
+// Collect fetches the stats from configured Kafka location and delivers them
+// as Prometheus metrics. It implements prometheus.Collector.
 func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	if e.allowConcurrent {
 		e.collect(ch)
@@ -310,7 +312,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	// Locking to avoid race add
 	e.sgMutex.Lock()
 	e.sgChans = append(e.sgChans, ch)
-	// Safe to compare lenght since we own the Lock
+	// Safe to compare length since we own the Lock
 	if len(e.sgChans) == 1 {
 		e.sgWaitCh = make(chan struct{})
 		go e.collectChans(e.sgWaitCh)
@@ -325,8 +327,6 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	// collectChan finished
 }
 
-// Collect fetches the stats from configured Kafka location and delivers them
-// as Prometheus metrics. It implements prometheus.Collector.
 func (e *Exporter) collectChans(quit chan struct{}) {
 	original := make(chan prometheus.Metric)
 	container := make([]prometheus.Metric, 0, 100)
@@ -650,54 +650,84 @@ func init() {
 	metrics.UseNilMetrics = true
 	prometheus.MustRegister(version.NewCollector("kafka_exporter"))
 }
-
 func toFlag(name string, help string) *kingpin.FlagClause {
 	flag.CommandLine.String(name, "", help) // hack around flag.Parse and glog.init flags
 	return kingpin.Flag(name, help)
 }
 
+// hack around flag.Parse and glog.init flags
+func toFlagString(name string, help string, value string) *string {
+	flag.CommandLine.String(name, value, help) // hack around flag.Parse and glog.init flags
+	return kingpin.Flag(name, help).Default(value).String()
+}
+
+func toFlagBool(name string, help string, value bool, valueString string) *bool {
+	flag.CommandLine.Bool(name, value, help) // hack around flag.Parse and glog.init flags
+	return kingpin.Flag(name, help).Default(valueString).Bool()
+}
+
+func toFlagStringsVar(name string, help string, value string, target *[]string) {
+	flag.CommandLine.String(name, value, help) // hack around flag.Parse and glog.init flags
+	kingpin.Flag(name, help).Default(value).StringsVar(target)
+}
+
+func toFlagStringVar(name string, help string, value string, target *string) {
+	flag.CommandLine.String(name, value, help) // hack around flag.Parse and glog.init flags
+	kingpin.Flag(name, help).Default(value).StringVar(target)
+}
+
+func toFlagBoolVar(name string, help string, value bool, valueString string, target *bool) {
+	flag.CommandLine.Bool(name, value, help) // hack around flag.Parse and glog.init flags
+	kingpin.Flag(name, help).Default(valueString).BoolVar(target)
+}
+
+func toFlagIntVar(name string, help string, value int, valueString string, target *int) {
+	flag.CommandLine.Int(name, value, help) // hack around flag.Parse and glog.init flags
+	kingpin.Flag(name, help).Default(valueString).IntVar(target)
+}
+
 func main() {
 	var (
-		listenAddress = toFlag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9308").String()
-		metricsPath   = toFlag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
-		topicFilter   = toFlag("topic.filter", "Regex that determines which topics to collect.").Default(".*").String()
-		groupFilter   = toFlag("group.filter", "Regex that determines which consumer groups to collect.").Default(".*").String()
-		logSarama     = toFlag("log.enable-sarama", "Turn on Sarama logging.").Default("false").Bool()
+		listenAddress = toFlagString("web.listen-address", "Address to listen on for web interface and telemetry.", ":9308")
+		metricsPath   = toFlagString("web.telemetry-path", "Path under which to expose metrics.", "/metrics")
+		topicFilter   = toFlagString("topic.filter", "Regex that determines which topics to collect.", ".*")
+		groupFilter   = toFlagString("group.filter", "Regex that determines which consumer groups to collect.", ".*")
+		logSarama     = toFlagBool("log.enable-sarama", "Turn on Sarama logging.", false, "false")
 
 		opts = kafkaOpts{}
 	)
 
-	toFlag("kafka.server", "Address (host:port) of Kafka server.").Default("kafka:9092").StringsVar(&opts.uri)
-	toFlag("sasl.enabled", "Connect using SASL/PLAIN.").Default("false").BoolVar(&opts.useSASL)
-	toFlag("sasl.handshake", "Only set this to false if using a non-Kafka SASL proxy.").Default("true").BoolVar(&opts.useSASLHandshake)
-	toFlag("sasl.username", "SASL user name.").Default("").StringVar(&opts.saslUsername)
-	toFlag("sasl.password", "SASL user password.").Default("").StringVar(&opts.saslPassword)
-	toFlag("sasl.mechanism", "The SASL SCRAM SHA algorithm sha256 or sha512 or gssapi as mechanism").Default("").StringVar(&opts.saslMechanism)
-	toFlag("sasl.service-name", "Service name when using kerberos Auth").Default("").StringVar(&opts.serviceName)
-	toFlag("sasl.kerberos-config-path", "Kerberos config path").Default("").StringVar(&opts.kerberosConfigPath)
-	toFlag("sasl.realm", "Kerberos realm").Default("").StringVar(&opts.realm)
-	toFlag("sasl.kerberos-auth-type", "Kerberos auth type. Either 'keytabAuth' or 'userAuth'").Default("").StringVar(&opts.kerberosAuthType)
-	toFlag("sasl.keytab-path", "Kerberos keytab file path").Default("").StringVar(&opts.keyTabPath)
-	toFlag("tls.enabled", "Connect to Kafka using TLS.").Default("false").BoolVar(&opts.useTLS)
-	toFlag("tls.server-name", "Used to verify the hostname on the returned certificates unless tls.insecure-skip-tls-verify is given. The kafka server's name should be given.").Default("").StringVar(&opts.tlsServerName)
-	toFlag("tls.ca-file", "The optional certificate authority file for Kafka TLS client authentication.").Default("").StringVar(&opts.tlsCAFile)
-	toFlag("tls.cert-file", "The optional certificate file for Kafka client authentication.").Default("").StringVar(&opts.tlsCertFile)
-	toFlag("tls.key-file", "The optional key file for Kafka client authentication.").Default("").StringVar(&opts.tlsKeyFile)
-	toFlag("server.tls.enabled", "Enable TLS for web server.").Default("false").BoolVar(&opts.serverUseTLS)
-	toFlag("server.tls.mutual-auth-enabled", "Enable TLS client mutual authentication.").Default("false").BoolVar(&opts.serverMutualAuthEnabled)
-	toFlag("server.tls.ca-file", "The certificate authority file for the web server.").Default("").StringVar(&opts.serverTlsCAFile)
-	toFlag("server.tls.cert-file", "The certificate file for the web server.").Default("").StringVar(&opts.serverTlsCertFile)
-	toFlag("server.tls.key-file", "The key file for the web server.").Default("").StringVar(&opts.serverTlsKeyFile)
-	toFlag("tls.insecure-skip-tls-verify", "If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure.").Default("false").BoolVar(&opts.tlsInsecureSkipTLSVerify)
-	toFlag("kafka.version", "Kafka broker version").Default(sarama.V2_0_0_0.String()).StringVar(&opts.kafkaVersion)
-	toFlag("use.consumelag.zookeeper", "if you need to use a group from zookeeper").Default("false").BoolVar(&opts.useZooKeeperLag)
-	toFlag("zookeeper.server", "Address (hosts) of zookeeper server.").Default("localhost:2181").StringsVar(&opts.uriZookeeper)
-	toFlag("kafka.labels", "Kafka cluster name").Default("").StringVar(&opts.labels)
-	toFlag("refresh.metadata", "Metadata refresh interval").Default("30s").StringVar(&opts.metadataRefreshInterval)
-	toFlag("offset.show-all", "Whether show the offset/lag for all consumer group, otherwise, only show connected consumer groups").Default("true").BoolVar(&opts.offsetShowAll)
-	toFlag("concurrent.enable", "If true, all scrapes will trigger kafka operations otherwise, they will share results. WARN: This should be disabled on large clusters").Default("false").BoolVar(&opts.allowConcurrent)
-	toFlag("topic.workers", "Number of topic workers").Default("100").IntVar(&opts.topicWorkers)
-	toFlag("verbosity", "Verbosity log level").Default("0").IntVar(&opts.verbosityLogLevel)
+	toFlagStringsVar("kafka.server", "Address (host:port) of Kafka server.", "kafka:9092", &opts.uri)
+	toFlagBoolVar("sasl.enabled", "Connect using SASL/PLAIN.", false, "false", &opts.useSASL)
+	toFlagBoolVar("sasl.handshake", "Only set this to false if using a non-Kafka SASL proxy.", true, "true", &opts.useSASLHandshake)
+	toFlagStringVar("sasl.username", "SASL user name.", "", &opts.saslUsername)
+	toFlagStringVar("sasl.password", "SASL user password.", "", &opts.saslPassword)
+	toFlagStringVar("sasl.mechanism", "The SASL SCRAM SHA algorithm sha256 or sha512 or gssapi as mechanism", "", &opts.saslMechanism)
+	toFlagStringVar("sasl.service-name", "Service name when using kerberos Auth", "", &opts.serviceName)
+	toFlagStringVar("sasl.kerberos-config-path", "Kerberos config path", "", &opts.kerberosConfigPath)
+	toFlagStringVar("sasl.realm", "Kerberos realm", "", &opts.realm)
+	toFlagStringVar("sasl.kerberos-auth-type", "Kerberos auth type. Either 'keytabAuth' or 'userAuth'", "", &opts.kerberosAuthType)
+	toFlagStringVar("sasl.keytab-path", "Kerberos keytab file path", "", &opts.keyTabPath)
+	toFlagBoolVar("tls.enabled", "Connect to Kafka using TLS.", false, "false", &opts.useTLS)
+	toFlagStringVar("tls.server-name", "Used to verify the hostname on the returned certificates unless tls.insecure-skip-tls-verify is given. The kafka server's name should be given.", "", &opts.tlsServerName)
+	toFlagStringVar("tls.ca-file", "The optional certificate authority file for Kafka TLS client authentication.", "", &opts.tlsCAFile)
+	toFlagStringVar("tls.cert-file", "The optional certificate file for Kafka client authentication.", "", &opts.tlsCertFile)
+	toFlagStringVar("tls.key-file", "The optional key file for Kafka client authentication.", "", &opts.tlsKeyFile)
+	toFlagBoolVar("server.tls.enabled", "Enable TLS for web server.", false, "false", &opts.serverUseTLS)
+	toFlagBoolVar("server.tls.mutual-auth-enabled", "Enable TLS client mutual authentication.", false, "false", &opts.serverMutualAuthEnabled)
+	toFlagStringVar("server.tls.ca-file", "The certificate authority file for the web server.", "", &opts.serverTlsCAFile)
+	toFlagStringVar("server.tls.cert-file", "The certificate file for the web server.", "", &opts.serverTlsCertFile)
+	toFlagStringVar("server.tls.key-file", "The key file for the web server.", "", &opts.serverTlsKeyFile)
+	toFlagBoolVar("tls.insecure-skip-tls-verify", "If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure.", false, "false", &opts.tlsInsecureSkipTLSVerify)
+	toFlagStringVar("kafka.version", "Kafka broker version", sarama.V2_0_0_0.String(), &opts.kafkaVersion)
+	toFlagBoolVar("use.consumelag.zookeeper", "if you need to use a group from zookeeper", false, "false", &opts.useZooKeeperLag)
+	toFlagStringsVar("zookeeper.server", "Address (hosts) of zookeeper server.", "localhost:2181", &opts.uriZookeeper)
+	toFlagStringVar("kafka.labels", "Kafka cluster name", "", &opts.labels)
+	toFlagStringVar("refresh.metadata", "Metadata refresh interval", "30s", &opts.metadataRefreshInterval)
+	toFlagBoolVar("offset.show-all", "Whether show the offset/lag for all consumer group, otherwise, only show connected consumer groups", true, "true", &opts.offsetShowAll)
+	toFlagBoolVar("concurrent.enable", "If true, all scrapes will trigger kafka operations otherwise, they will share results. WARN: This should be disabled on large clusters", false, "false", &opts.allowConcurrent)
+	toFlagIntVar("topic.workers", "Number of topic workers", 100, "100", &opts.topicWorkers)
+	toFlagIntVar("verbosity", "Verbosity log level", 0, "0", &opts.verbosityLogLevel)
 
 	plConfig := plog.Config{}
 	plogflag.AddFlags(kingpin.CommandLine, &plConfig)
