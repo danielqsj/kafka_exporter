@@ -62,7 +62,6 @@ spec:
             {{- if .Values.kafkaExporter.log.enableSarama }}
             - --log.enable-sarama
             {{- end }}
-            {{- end }}
           ports:
             - name: metrics
               containerPort: 9308
