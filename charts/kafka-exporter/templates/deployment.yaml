@@ -57,6 +57,8 @@ spec:
             - --tls.key-file=/etc/tls-certs/key-file
             {{- end }}
             {{- end }}
+            {{- if .Values.kafkaExporter.log }}
+            - --verbosity={{ .Values.kafkaExporter.log.verbosity }}
             {{- if .Values.kafkaExporter.log.enableSarama }}
             - --log.enable-sarama
             {{- end }}
