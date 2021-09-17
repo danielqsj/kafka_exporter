@@ -69,6 +69,6 @@ promu:
 github-release:
 	@GOOS=$(shell uname -s | tr A-Z a-z) \
 		GOARCH=$(subst x86_64,amd64,$(patsubst i%86,386,$(shell uname -m))) \
-		$(GO) install github.com/aktau/github-release@v0.10.0
+		$(GO) install github.com/github-release/github-release@v0.10.0
 
 .PHONY: all style format build test vet tarball docker promu
