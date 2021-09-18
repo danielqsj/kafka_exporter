@@ -23,7 +23,7 @@ Table of Contents
 	-	[Brokers](#brokers)
 	-	[Topics](#topics)
 	-	[Consumer Groups](#consumer-groups)
--	[Grafana Dashboard](#grafana-dashboard)	
+-	[Grafana Dashboard](#grafana-dashboard)
 -   [Contribute](#contribute)
 -   [Donation](#donation)
 -   [License](#license)
@@ -39,7 +39,6 @@ Dependency
 -	[Prometheus](https://prometheus.io)
 -	[Sarama](https://shopify.github.io/sarama)
 -	[Golang](https://golang.org)
--	[Dep](https://github.com/golang/dep)
 
 Download
 --------
