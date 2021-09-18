@@ -1,5 +1,3 @@
-# github.com/Masterminds/semver v1.5.0
-## explicit
 # github.com/Shopify/sarama v1.29.1
 ## explicit; go 1.13
 github.com/Shopify/sarama
@@ -48,10 +46,6 @@ github.com/golang/protobuf/ptypes/timestamp
 # github.com/golang/snappy v0.0.3
 ## explicit
 github.com/golang/snappy
-# github.com/google/go-github/v25 v25.1.3
-## explicit
-# github.com/google/go-querystring v1.1.0
-## explicit; go 1.10
 # github.com/hashicorp/go-uuid v1.0.2
 ## explicit
 github.com/hashicorp/go-uuid
@@ -141,8 +135,6 @@ github.com/prometheus/common/version
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/promu v0.12.0
-## explicit; go 1.14
 # github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 ## explicit
 github.com/rcrowley/go-metrics
@@ -155,8 +147,6 @@ github.com/xdg/scram
 # github.com/xdg/stringprep v1.0.3
 ## explicit
 github.com/xdg/stringprep
-# go.uber.org/atomic v1.9.0
-## explicit; go 1.13
 # golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e
 ## explicit; go 1.17
 golang.org/x/crypto/md4
@@ -166,8 +156,6 @@ golang.org/x/crypto/pbkdf2
 golang.org/x/net/http2/hpack
 golang.org/x/net/internal/socks
 golang.org/x/net/proxy
-# golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f
-## explicit; go 1.11
 # golang.org/x/sys v0.0.0-20210906170528-6f6e22806c34
 ## explicit; go 1.17
 golang.org/x/sys/internal/unsafeheader
@@ -177,8 +165,6 @@ golang.org/x/sys/windows
 ## explicit; go 1.11
 golang.org/x/text/transform
 golang.org/x/text/unicode/norm
-# google.golang.org/appengine v1.6.7
-## explicit; go 1.11
 # google.golang.org/protobuf v1.27.1
 ## explicit; go 1.9
 google.golang.org/protobuf/encoding/prototext
@@ -214,5 +200,3 @@ google.golang.org/protobuf/types/known/timestamppb
 # gopkg.in/alecthomas/kingpin.v2 v2.2.6
 ## explicit
 gopkg.in/alecthomas/kingpin.v2
-# gopkg.in/yaml.v2 v2.4.0
-## explicit; go 1.15
