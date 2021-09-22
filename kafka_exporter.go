@@ -84,6 +84,7 @@ type kafkaOpts struct {
 	saslUsername             string
 	saslPassword             string
 	saslMechanism            string
+	saslDisablePAFXFast      bool
 	useTLS                   bool
 	tlsServerName            string
 	tlsCAFile                string
@@ -178,6 +179,9 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 			} else {
 				config.Net.SASL.GSSAPI.AuthType = sarama.KRB5_USER_AUTH
 				config.Net.SASL.GSSAPI.Password = opts.saslPassword
+			}
+			if opts.saslDisablePAFXFast {
+				config.Net.SASL.GSSAPI.DisablePAFXFAST = true
 			}
 		case "plain":
 		default:
@@ -708,6 +712,7 @@ func main() {
 	toFlagStringVar("sasl.realm", "Kerberos realm", "", &opts.realm)
 	toFlagStringVar("sasl.kerberos-auth-type", "Kerberos auth type. Either 'keytabAuth' or 'userAuth'", "", &opts.kerberosAuthType)
 	toFlagStringVar("sasl.keytab-path", "Kerberos keytab file path", "", &opts.keyTabPath)
+	toFlagBoolVar("sasl.disable-PA-FX-FAST", "Configure the Kerberos client to not use PA_FX_FAST.", false, "false", &opts.saslDisablePAFXFast)
 	toFlagBoolVar("tls.enabled", "Connect to Kafka using TLS.", false, "false", &opts.useTLS)
 	toFlagStringVar("tls.server-name", "Used to verify the hostname on the returned certificates unless tls.insecure-skip-tls-verify is given. The kafka server's name should be given.", "", &opts.tlsServerName)
 	toFlagStringVar("tls.ca-file", "The optional certificate authority file for Kafka TLS client authentication.", "", &opts.tlsCAFile)
