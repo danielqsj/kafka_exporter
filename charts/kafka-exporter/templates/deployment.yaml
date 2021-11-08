@@ -59,6 +59,7 @@ spec:
             {{- end }}
             {{- if .Values.kafkaExporter.log }}
             - --verbosity={{ .Values.kafkaExporter.log.verbosity }}
+            {{- end }}
             {{- if .Values.kafkaExporter.log.enableSarama }}
             - --log.enable-sarama
             {{- end }}
