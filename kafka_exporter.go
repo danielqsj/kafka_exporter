@@ -218,6 +218,11 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 			} else {
 				return nil, err
 			}
+		} else {
+			config.Net.TLS.Config.RootCAs, err = x509.SystemCertPool()
+			if err != nil {
+				return nil, errors.Wrap(err, "error loading system cert pool")
+			}
 		}
 
 		canReadCertAndKey, err := CanReadCertAndKey(opts.tlsCertFile, opts.tlsKeyFile)
