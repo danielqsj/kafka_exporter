@@ -511,7 +511,11 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 		}
 	}
 
-	N := minx(len(topics)/2, e.topicWorkers)
+	N := len(topics)
+	if N > 1 {
+		N = minx(N/2, e.topicWorkers)
+	}
+
 	for w := 1; w <= N; w++ {
 		go loopTopics(w)
 	}
