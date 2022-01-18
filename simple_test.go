@@ -2,12 +2,13 @@ package main
 
 import (
 	"errors"
-	"github.com/Shopify/sarama"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/Shopify/sarama"
 )
 
 var bootstrap_servers = []string{"localhost:9092"}
@@ -65,7 +66,7 @@ func execute(handler func(response *http.Response)) {
 func runServer() {
 	opts := kafkaOpts{}
 	opts.uri = bootstrap_servers
-	opts.uriZookeeper = []string{"localhost:2181"}
+	opts.uriZookeeper = "localhost:2181"
 	opts.kafkaVersion = sarama.V1_0_0_0.String()
 	opts.metadataRefreshInterval = "30s"
 	setup("localhost:9304", "/metrics", ".*", ".*", false, opts, nil)
