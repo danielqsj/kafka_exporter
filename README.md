@@ -8,22 +8,22 @@ Kafka exporter for Prometheus. For other metrics from Kafka, have a look at the 
 Table of Contents
 -----------------
 
--	[Compatibility](#compatibility)
--	[Dependency](#dependency)
--	[Download](#download)
--	[Compile](#compile)
-	-	[Build Binary](#build-binary)
-	-	[Build Docker Image](#build-docker-image)
--	[Run](#run)
-	-	[Run Binary](#run-binary)
-	-	[Run Docker Image](#run-docker-image)
--	[Flags](#flags)
-    -	[Notes](#notes)
--	[Metrics](#metrics)
-	-	[Brokers](#brokers)
-	-	[Topics](#topics)
-	-	[Consumer Groups](#consumer-groups)
--	[Grafana Dashboard](#grafana-dashboard)
+- [Compatibility](#compatibility)
+- [Dependency](#dependency)
+- [Download](#download)
+- [Compile](#compile)
+  - [Build Binary](#build-binary)
+  - [Build Docker Image](#build-docker-image)
+- [Run](#run)
+  - [Run Binary](#run-binary)
+  - [Run Docker Image](#run-docker-image)
+- [Flags](#flags)
+    - [Notes](#notes)
+- [Metrics](#metrics)
+  - [Brokers](#brokers)
+  - [Topics](#topics)
+  - [Consumer Groups](#consumer-groups)
+- [Grafana Dashboard](#grafana-dashboard)
 -   [Contribute](#contribute)
 -   [Donation](#donation)
 -   [License](#license)
@@ -36,9 +36,9 @@ Support [Apache Kafka](https://kafka.apache.org) version 0.10.1.0 (and later).
 Dependency
 ----------
 
--	[Prometheus](https://prometheus.io)
--	[Sarama](https://shopify.github.io/sarama)
--	[Golang](https://golang.org)
+- [Prometheus](https://prometheus.io)
+- [Sarama](https://shopify.github.io/sarama)
+- [Golang](https://golang.org)
 
 Download
 --------
@@ -89,44 +89,44 @@ Flags
 
 This image is configurable using different flags
 
-| Flag name                    | Default        | Description                                                                                                                            |
-|------------------------------|----------------|----------------------------------------------------------------------------------------------------------------------------------------|
-| kafka.server                 | kafka:9092     | Addresses (host:port) of Kafka server                                                                                                  |
-| kafka.version                | 2.0.0          | Kafka broker version                                                                                                                   |
-| sasl.enabled                 | false          | Connect using SASL/PLAIN                                                                                                               |
-| sasl.handshake               | true           | Only set this to false if using a non-Kafka SASL proxy                                                                                 |
-| sasl.username                |                | SASL user name                                                                                                                         |
-| sasl.password                |                | SASL user password                                                                                                                     |
-| sasl.mechanism               |                | SASL mechanism can be plain, scram-sha512, scram-sha256                                                                                |
-| sasl.service-name            |                | Service name when using Kerberos Auth                                                                                                  |
-| sasl.kerberos-config-path    |                | Kerberos config path                                                                                                                   |
-| sasl.realm                   |                | Kerberos realm                                                                                                                         |
-| sasl.keytab-path             |                | Kerberos keytab file path                                                                                                              |
-| sasl.kerberos-auth-type      |                | Kerberos auth type. Either 'keytabAuth' or 'userAuth'                                                                                  |
-| tls.enabled                  | false          | Connect to Kafka using TLS                                                                                                                      |
-| tls.server-name                  |                | Used to verify the hostname on the returned certificates unless tls.insecure-skip-tls-verify is given. The kafka server's name should be given                                                                  |
-| tls.ca-file                  |                | The optional certificate authority file for Kafka TLS client authentication                                                                  |
-| tls.cert-file                |                | The optional certificate file for Kafka client authentication                                                                                |
-| tls.key-file                 |                | The optional key file for Kafka client authentication                                                                                        |
-| tls.insecure-skip-tls-verify | false          | If true, the server's certificate will not be checked for validity                                                                     |
-| server.tls.enabled                  | false          | Enable TLS for web server                                                                                                                      |
-| server.tls.mutual-auth-enabled                  | false          | Enable TLS client mutual authentication                                                                                                                      |
-| server.tls.ca-file                |                | The certificate authority file for the web server                                                                                |
-| server.tls.cert-file                |                | The certificate file for the web server                                                                                |
-| server.tls.key-file                 |                | The key file for the web server                                                                                        |
-| topic.filter                 | .*             | Regex that determines which topics to collect                                                                                          |
-| group.filter                 | .*             | Regex that determines which consumer groups to collect                                                                                 |
-| web.listen-address           | :9308          | Address to listen on for web interface and telemetry                                                                                   |
-| web.telemetry-path           | /metrics       | Path under which to expose metrics                                                                                                     |
-| log.enable-sarama            | false          | Turn on Sarama logging                                                                                                                 |
-| use.consumelag.zookeeper     | false          | if you need to use a group from zookeeper                                                                                              |
-| zookeeper.server             | localhost:2181 | Address (hosts) of zookeeper server                                                                                                    |
-| kafka.labels                 |                | Kafka cluster name                                                                                                                     |
-| refresh.metadata             | 30s            | Metadata refresh interval                                                                                                              |
-| offset.show-all              | true           | Whether show the offset/lag for all consumer group, otherwise, only show connected consumer groups                                     |
-| concurrent.enable            | false          | If true, all scrapes will trigger kafka operations otherwise, they will share results. WARN: This should be disabled on large clusters |
-| topic.workers                | 100            | Number of topic workers                                                                                                                |
-| verbosity                    | 0              | Verbosity log level                                                                                                                    |
+| Flag name                      | Default        | Chart                                   | Description                                                                                                                                    |
+|--------------------------------|----------------|-----------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|
+| kafka.server                   | kafka:9092     | kafkaExporter.kafka.servers             | Addresses (host:port) of Kafka server                                                                                                          |
+| kafka.version                  | 2.0.0          | kafkaExporter.kafka.version             | Kafka broker version                                                                                                                           |
+| sasl.enabled                   | false          | kafkaExporter.sasl.enabled              | Connect using SASL/PLAIN                                                                                                                       |
+| sasl.handshake                 | true           | kafkaExporter.sasl.handshake            | Only set this to false if using a non-Kafka SASL proxy                                                                                         |
+| sasl.username                  |                | kafkaExporter.sasl.username             | SASL user name                                                                                                                                 |
+| sasl.password                  |                | kafkaExporter.sasl.password             | SASL user password                                                                                                                             |
+| sasl.mechanism                 |                | kafkaExporter.sasl.mechanism            | SASL mechanism can be plain, scram-sha512, scram-sha256                                                                                        |
+| sasl.service-name              |                | kafkaExporter.sasl.serviceName          | Service name when using Kerberos Auth                                                                                                          |
+| sasl.kerberos-config-path      |                | kafkaExporter.sasl.kerberosConfigPath   | Kerberos config path                                                                                                                           |
+| sasl.realm                     |                | kafkaExporter.sasl.realm                | Kerberos realm                                                                                                                                 |
+| sasl.keytab-path               |                | kafkaExporter.sasl.keytabPath           | Kerberos keytab file path                                                                                                                      |
+| sasl.kerberos-auth-type        |                | kafkaExporter.sasl.kerberosAuthType     | Kerberos auth type. Either 'keytabAuth' or 'userAuth'                                                                                          |
+| tls.enabled                    | false          | kafkaExporter.tls.enabled               | Connect to Kafka using TLS                                                                                                                     |
+| tls.server-name                |                | kafkaExporter.tls.serverName            | Used to verify the hostname on the returned certificates unless tls.insecure-skip-tls-verify is given. The kafka server's name should be given |
+| tls.ca-file                    |                | kafkaExporter.tls.caFile                | The optional certificate authority file for Kafka TLS client authentication                                                                    |
+| tls.cert-file                  |                | kafkaExporter.tls.certFile              | The optional certificate file for Kafka client authentication                                                                                  |
+| tls.key-file                   |                | kafkaExporter.tls.keyFile               | The optional key file for Kafka client authentication                                                                                          |
+| tls.insecure-skip-tls-verify   | false          | kafkaExporter.tls.insecureSkipTlsVerify | If true, the server's certificate will not be checked for validity                                                                             |
+| server.tls.enabled             | false          |                                         | Enable TLS for web server                                                                                                                      |
+| server.tls.mutual-auth-enabled | false          |                                         | Enable TLS client mutual authentication                                                                                                        |
+| server.tls.ca-file             |                |                                         | The certificate authority file for the web server                                                                                              |
+| server.tls.cert-file           |                |                                         | The certificate file for the web server                                                                                                        |
+| server.tls.key-file            |                |                                         | The key file for the web server                                                                                                                |
+| topic.filter                   | .*             | kafkaExporter.filter.topic              | Regex that determines which topics to collect                                                                                                  |
+| group.filter                   | .*             | kafkaExporter.filter.group              | Regex that determines which consumer groups to collect                                                                                         |
+| web.listen-address             | :9308          | kafkaExporter.web.listenAddress         | Address to listen on for web interface and telemetry                                                                                           |
+| web.telemetry-path             | /metrics       | kafkaExporter.web.telemetryPath         | Path under which to expose metrics                                                                                                             |
+| log.enable-sarama              | false          | kafkaExporter.log.enableSarama          | Turn on Sarama logging                                                                                                                         |
+| use.consumelag.zookeeper       | false          | kafkaExporter.zookeeper.consumelag      | if you need to use a group from zookeeper                                                                                                      |
+| zookeeper.server               | localhost:2181 | kafkaExporter.zookeeper.server          | Address (hosts) of zookeeper server                                                                                                            |
+| kafka.labels                   |                | kafkaExporter.kafka.labels              | Kafka cluster name                                                                                                                             |
+| refresh.metadata               | 30s            | kafkaExporter.refresh.metadata          | Metadata refresh interval                                                                                                                      |
+| offset.show-all                | true           | kafkaExporter.offset.showAll            | Whether show the offset/lag for all consumer group, otherwise, only show connected consumer groups                                             |
+| concurrent.enable              | false          | kafkaExporter.concurrent.enable         | If true, all scrapes will trigger kafka operations otherwise, they will share results. WARN: This should be disabled on large clusters         |
+| topic.workers                  | 100            | kafkaExporter.topic.workers             | Number of topic workers                                                                                                                        |
+| verbosity                      | 0              | kafkaExporter.log.verbosity             | Verbosity log level                                                                                                                            |
 
 
 ### Notes

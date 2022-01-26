@@ -7,22 +7,18 @@ metadata:
   namespace: {{ .Values.prometheus.serviceMonitor.namespace }}
   {{- end }}
   labels:
-    app.kubernetes.io/name: {{ include "kafka-exporter.name" . }}
-    helm.sh/chart: {{ include "kafka-exporter.chart" . }}
-    app.kubernetes.io/instance: {{ .Release.Name }}
-    app.kubernetes.io/managed-by: {{ .Release.Service }}
-    {{- if .Values.labels -}}
-    {{ .Values.labels | toYaml | nindent 4 -}}
+    {{- include "kafka-exporter.labels" . | nindent 4 }}
+    {{- if .Values.labels }}
+    {{ toYaml .Values.labels | nindent 4 }}
     {{- end }}
     {{- if .Values.prometheus.serviceMonitor.additionalLabels }}
-{{ toYaml .Values.prometheus.serviceMonitor.additionalLabels | indent 4 -}}
+    {{ toYaml .Values.prometheus.serviceMonitor.additionalLabels | nindent 4 }}
     {{- end }}
 spec:
   jobLabel: jobLabel
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{ include "kafka-exporter.name" . }}
-      helm.sh/chart: {{ include "kafka-exporter.chart" . }}
+      {{- include "kafka-exporter.selectorLabels" . | nindent 6 }}
   namespaceSelector:
     matchNames:
     - {{ .Release.Namespace }}
