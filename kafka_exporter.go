@@ -49,6 +49,7 @@ var (
 	topicPartitionInSyncReplicas       *prometheus.Desc
 	topicPartitionUsesPreferredReplica *prometheus.Desc
 	topicUnderReplicatedPartition      *prometheus.Desc
+	topicMinInsyncReplicas             *prometheus.Desc
 	consumergroupCurrentOffset         *prometheus.Desc
 	consumergroupCurrentOffsetSum      *prometheus.Desc
 	consumergroupLag                   *prometheus.Desc
@@ -61,6 +62,7 @@ var (
 // the prometheus metrics package.
 type Exporter struct {
 	client                  sarama.Client
+	admin                   sarama.ClusterAdmin
 	topicFilter             *regexp.Regexp
 	groupFilter             *regexp.Regexp
 	mu                      sync.Mutex
@@ -250,15 +252,22 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 	config.Metadata.RefreshFrequency = interval
 
 	client, err := sarama.NewClient(opts.uri, config)
-
 	if err != nil {
 		return nil, errors.Wrap(err, "Error Init Kafka Client")
 	}
 
 	glog.V(TRACE).Infoln("Done Init Clients")
+	admin, err := sarama.NewClusterAdmin(opts.uri, config)
+	if err != nil {
+		glog.Errorln("Error Init Kafka Admin")
+		panic(err)
+	}
+	glog.V(TRACE).Infoln("Done Init Admins")
+
 	// Init our exporter.
 	return &Exporter{
 		client:                  client,
+		admin:                   admin,
 		topicFilter:             regexp.MustCompile(topicFilter),
 		groupFilter:             regexp.MustCompile(groupFilter),
 		useZooKeeperLag:         opts.useZooKeeperLag,
@@ -299,6 +308,7 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- topicPartitionInSyncReplicas
 	ch <- topicPartitionUsesPreferredReplica
 	ch <- topicUnderReplicatedPartition
+	ch <- topicMinInsyncReplicas
 	ch <- consumergroupCurrentOffset
 	ch <- consumergroupCurrentOffsetSum
 	ch <- consumergroupLag
@@ -384,7 +394,31 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 
 	topicChannel := make(chan string)
 
-	getTopicMetrics := func(topic string) {
+	// get topic details
+	aTopics, err := e.admin.ListTopics()
+	if err != nil {
+		panic(err)
+	}
+
+	cfg, err := e.admin.DescribeConfig(sarama.ConfigResource{
+		Type: sarama.TopicResource,
+		Name: "min.insync.replicas",
+	})
+
+	// get min.insync.replicas from global config
+	defaultMinInsyncReplicas := float64(-1)
+	for _, v := range cfg {
+		if v.Name == "min.insync.replicas" {
+			minIsr, err := strconv.ParseFloat(v.Value, 64)
+			if err != nil {
+				// something went wrong : don't set it
+				minIsr = -1
+			}
+			defaultMinInsyncReplicas = minIsr
+		}
+	}
+
+	getTopicMetrics := func(topic string, detail sarama.TopicDetail) {
 		defer wg.Done()
 
 		if !e.topicFilter.MatchString(topic) {
@@ -409,6 +443,19 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			} else {
 				ch <- prometheus.MustNewConstMetric(
 					topicPartitionLeader, prometheus.GaugeValue, float64(broker.ID()), topic, strconv.FormatInt(int64(partition), 10),
+				)
+			}
+
+			minInsyncReplicas := defaultMinInsyncReplicas
+			if _, ok := detail.ConfigEntries["min.insync.replicas"]; ok {
+				minInsyncReplicas, err = strconv.ParseFloat(*detail.ConfigEntries["min.insync.replicas"], 64)
+			}
+			if err != nil {
+				glog.Errorf("Could not parse minInsyncReplicas")
+			}
+			if minInsyncReplicas != float64(-1) {
+				ch <- prometheus.MustNewConstMetric(
+					topicMinInsyncReplicas, prometheus.GaugeValue, float64(minInsyncReplicas), topic,
 				)
 			}
 
@@ -498,7 +545,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			topic, open := <-topicChannel
 			ok = open
 			if open {
-				getTopicMetrics(topic)
+				getTopicMetrics(topic, aTopics[topic])
 			}
 		}
 	}
@@ -788,6 +835,13 @@ func setup(
 		"Number of partitions for this Topic",
 		[]string{"topic"}, labels,
 	)
+
+	topicMinInsyncReplicas = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "topic", "topic_min_insync_replicas"),
+		"Minimum of In-Sync Replicas for this Topic",
+		[]string{"topic"}, labels,
+	)
+
 	topicCurrentOffset = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "topic", "partition_current_offset"),
 		"Current Offset of a Broker at Topic/Partition",
@@ -874,6 +928,8 @@ func setup(
 		glog.Fatalln(err)
 	}
 	defer exporter.client.Close()
+	defer exporter.admin.Close()
+
 	prometheus.MustRegister(exporter)
 
 	http.Handle(metricsPath, promhttp.Handler())
