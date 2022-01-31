@@ -333,8 +333,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 func (e *Exporter) collectChans(quit chan struct{}) {
 	original := make(chan prometheus.Metric)
-	// Do not indicate the limit of capacity
-	container := make([]prometheus.Metric, 0)
+	container := make([]prometheus.Metric, 0, 100)
 	go func() {
 		for metric := range original {
 			container = append(container, metric)
@@ -391,7 +390,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 		defer wg.Done()
 		partitions, err := e.client.Partitions(topic)
 		if err != nil {
-			plog.Errorf("Cannot get partitions of topic %s: %v", topic, err)
+			glog.Errorf("Cannot get partitions of topic %s: %v", topic, err)
 		} else {
 			e.mu.Lock()
 			topicPartitionsMap[topic] = partitions
@@ -504,13 +503,13 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 						)
 					}
 				}
-			}			
+			}
 		}
 	}
 
 	getConsumerGroupMetrics := func(broker *sarama.Broker) {
 		defer wg.Done()
-		plog.Debugf("[%d] Fetching consumer group metrics", broker.ID())
+		glog.V(DEBUG).Infof("[%d] Fetching consumer group metrics", broker.ID())
 		e.mu.Lock()
 		if _, ok := groupOffset[broker.ID()]; !ok {
 			groupOffset[broker.ID()] = make(map[string]map[string]map[int32]int64)
@@ -522,7 +521,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 		}
 		defer broker.Close()
 
-		plog.Debugf("[%d]> listing groups", broker.ID())
+		glog.V(DEBUG).Infof("[%d]> listing groups", broker.ID())
 		groups, err := broker.ListGroups(&sarama.ListGroupsRequest{})
 		if err != nil {
 			glog.Errorf("Cannot get consumer group: %v", err)
@@ -535,7 +534,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			}
 		}
 
-		plog.Debugf("[%d]> describing groups", broker.ID())
+		glog.V(DEBUG).Infof("[%d]> describing groups", broker.ID())
 		describeGroups, err := broker.DescribeGroups(&sarama.DescribeGroupsRequest{Groups: groupIds})
 		if err != nil {
 			glog.Errorf("Cannot get describe groups: %v", err)
@@ -573,11 +572,11 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			)
 
 			start := time.Now()
-			plog.Debugf("[%d][%s]> fetching group offsets", broker.ID(), group.GroupId)
+			glog.V(DEBUG).Infof("[%d][%s]> fetching group offsets", broker.ID(), group.GroupId)
 			if offsetFetchResponse, err := broker.FetchOffset(&offsetFetchRequest); err != nil {
-				plog.Errorf("Cannot get offset of group %s: %v", group.GroupId, err)
+				glog.Errorf("Cannot get offset of group %s: %v", group.GroupId, err)
 			} else {
-				plog.Debugf("[%d][%s] done fetching group offset in %s", broker.ID(), group.GroupId, time.Since(start).String())
+				glog.V(DEBUG).Infof("[%d][%s] done fetching group offset in %s", broker.ID(), group.GroupId, time.Since(start).String())
 				for topic, partitions := range offsetFetchResponse.Blocks {
 					// Topic filter
 					if !e.topicFilter.MatchString(topic) {
@@ -601,7 +600,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 						for partition, offsetFetchResponseBlock := range partitions {
 							err := offsetFetchResponseBlock.Err
 							if err != sarama.ErrNoError {
-								plog.Errorf("Error for  partition %d :%v\n", partition, err.Error())
+								glog.Errorf("Error for  partition %d :%v\n", partition, err.Error())
 								continue
 							}
 							e.mu.Lock()
@@ -623,7 +622,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	}
 
 	// Firstly get topic-partitions information
-	plog.Info("Fetching topic-partitions information")
+	glog.V(DEBUG).Infof("Fetching topic-partitions information")
 	for _, topic := range topics {
 		wg.Add(1)
 		go getTopicPartitions(topic)
@@ -651,7 +650,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			topic, open := <-topicChannel
 			ok = open
 			if open {
-				plog.Infof("Collecting metrics [%d] for topic %s", id, topic)
+				glog.V(DEBUG).Infof("Collecting metrics [%d] for topic %s", id, topic)
 				getTopicMetrics(topic)
 			}
 		}
@@ -663,7 +662,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 		go loopTopics(w)
 	}
 
-	plog.Info("Fetching topic metrics")
+	glog.V(DEBUG).Infoln("Fetching topic metrics")
 	for _, topic := range topics {
 		if e.topicFilter.MatchString(topic) {
 			wg.Add(1)
@@ -706,7 +705,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	}
 
 	if len(groupOffset) > 0 {
-		plog.Info("Calculating consume group lag")
+		glog.V(DEBUG).Infoln("Calculating consume group lag")
 		for _, v := range groupOffset {
 			wg.Add(1)
 			go calculateConsumeGroupMetrics(v)
