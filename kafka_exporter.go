@@ -416,7 +416,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			}
 
             if err := broker.Open(e.client.Config()); err != nil && err != sarama.ErrAlreadyConnected {
-                glog.Errorf("Error open Kafka broker: $v", err)
+                glog.Errorf("Error open Kafka broker: %v", err)
             }
             describeLogDirs, err := broker.DescribeLogDirs(&sarama.DescribeLogDirsRequest{1, []sarama.DescribeLogDirsRequestTopic{{string(topic), []int32{int32(partition)}}}})
             if err != nil {
