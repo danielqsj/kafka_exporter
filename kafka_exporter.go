@@ -58,6 +58,9 @@ type Exporter struct {
 	zookeeperClient         *kazoo.Kazoo
 	nextMetadataRefresh     time.Time
 	metadataRefreshInterval time.Duration
+
+	metrics    []prometheus.Metric
+	metricsMtx sync.RWMutex
 }
 
 type kafkaOpts struct {
@@ -76,6 +79,7 @@ type kafkaOpts struct {
 	uriZookeeper             []string
 	labels                   string
 	metadataRefreshInterval  string
+	collectMetricsInterval   time.Duration
 }
 
 // CanReadCertAndKey returns true if the certificate and key files already exists,
@@ -187,7 +191,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 	plog.Infoln("Done Init Clients")
 
 	// Init our exporter.
-	return &Exporter{
+	exporter := &Exporter{
 		client:                  client,
 		topicFilter:             regexp.MustCompile(topicFilter),
 		groupFilter:             regexp.MustCompile(groupFilter),
@@ -195,7 +199,12 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		zookeeperClient:         zookeeperClient,
 		nextMetadataRefresh:     time.Now(),
 		metadataRefreshInterval: interval,
-	}, nil
+	}
+
+	// start background collect metrics
+	go exporter.backgroundCollect(opts.collectMetricsInterval)
+
+	return exporter, nil
 }
 
 // Describe describes all the metrics ever exported by the Kafka exporter. It
@@ -220,6 +229,40 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 // Collect fetches the stats from configured Kafka location and delivers them
 // as Prometheus metrics. It implements prometheus.Collector.
 func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
+	e.metricsMtx.RLock()
+	defer e.metricsMtx.RUnlock()
+	for _, metric := range e.metrics {
+		ch <- metric
+	}
+}
+
+func (e *Exporter) backgroundCollect(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	for range ticker.C {
+		ms := make([]prometheus.Metric, 0)
+		ch := make(chan prometheus.Metric)
+		go func() {
+			for {
+				select {
+				case m, ok := <-ch:
+					if !ok {
+						return
+					}
+					ms = append(ms, m)
+				}
+			}
+		}()
+
+		e.collect(ch)
+		close(ch)
+
+		e.metricsMtx.Lock()
+		e.metrics = ms
+		e.metricsMtx.Unlock()
+	}
+}
+
+func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	var wg = sync.WaitGroup{}
 	ch <- prometheus.MustNewConstMetric(
 		clusterBrokers, prometheus.GaugeValue, float64(len(e.client.Brokers())),
@@ -496,6 +539,7 @@ func main() {
 	kingpin.Flag("zookeeper.server", "Address (hosts) of zookeeper server.").Default("localhost:2181").StringsVar(&opts.uriZookeeper)
 	kingpin.Flag("kafka.labels", "Kafka cluster name").Default("").StringVar(&opts.labels)
 	kingpin.Flag("refresh.metadata", "Metadata refresh interval").Default("30s").StringVar(&opts.metadataRefreshInterval)
+	kingpin.Flag("collect.interval", "Collect metrics interval").Default("1s").DurationVar(&opts.collectMetricsInterval)
 
 	plog.AddFlags(kingpin.CommandLine)
 	kingpin.Version(version.Print("kafka_exporter"))
