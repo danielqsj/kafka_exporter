@@ -1,16 +1,7 @@
-FROM golang:alpine as build
+FROM       alpine:3.15
+MAINTAINER Maxim Pogozhiy <foxdalas@gmail.com>
 
-RUN apk add git
+COPY kafka-exporter /bin/kafka_exporter
 
-WORKDIR /app
-COPY go.mod go.sum /app/
-RUN go mod download
-COPY . .
-RUN apk add alpine-sdk
-RUN go build kafka_exporter.go
-
-FROM alpine:3.10
-RUN apk --no-cache add ca-certificates
-COPY --from=build /app/kafka_exporter /bin/
-EXPOSE     9308
 ENTRYPOINT ["/bin/kafka_exporter"]
+EXPOSE     9308

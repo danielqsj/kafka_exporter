@@ -1,0 +1,40 @@
+project_name: kafka-exporter
+release:
+  github:
+    owner: foxdalas
+    name: kafka_exporter
+
+builds:
+  - id: kafka-exporter
+    binary: kafka-exporter
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+dockers:
+  - id: kafka-exporter-docker-amd64
+    goos: linux
+    goarch: amd64
+    ids:
+      - sphinx-exporter
+    image_templates:
+      - "foxdalas/kafka-exporter:v{{ .Version }}-amd64"
+    build_flag_templates:
+      - "--platform=linux/amd64"
+    use: buildx
+  - id: kafka-exporter-docker-arm64
+    goos: linux
+    goarch: arm64
+    ids:
+      - kafka-exporter
+    image_templates:
+      - "foxdalas/kafka-exporter:v{{ .Version }}-arm64"
+    build_flag_templates:
+      - "--platform=linux/arm64"
+    use: buildx
+docker_manifests:
+  - name_template: foxdalas/kafka-exporter:v{{ .Version }}
+    image_templates:
+      - foxdalas/kafka-exporter:v{{ .Version }}-amd64
+      - foxdalas/kafka-exporter:v{{ .Version }}-arm64

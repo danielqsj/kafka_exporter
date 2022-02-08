@@ -1,0 +1,40 @@
+name: "build-and-test"
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  build-and-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.17
+
+      - name: Go mod download
+        run: go mod download
+
+      - uses: Jerome1337/gofmt-action@v1.0.4
+        with:
+          gofmt-path: '.'
+          gofmt-flags: '-l -d'
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v2
+        with:
+          version: v1.43
+          skip-go-installation: true
+          skip-pkg-cache: true
+
+      - name: Test
+        run: go test ./...
+
+      - name: Go build
+        run: go build .
