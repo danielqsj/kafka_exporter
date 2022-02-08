@@ -88,15 +88,15 @@ func CanReadCertAndKey(certPath, keyPath string) (bool, error) {
 	certReadable := canReadFile(certPath)
 	keyReadable := canReadFile(keyPath)
 
-	if certReadable == false && keyReadable == false {
+	if !certReadable && !keyReadable {
 		return false, nil
 	}
 
-	if certReadable == false {
+	if !certReadable {
 		return false, fmt.Errorf("error reading %s, certificate and key must be supplied as a pair", certPath)
 	}
 
-	if keyReadable == false {
+	if !keyReadable {
 		return false, fmt.Errorf("error reading %s, certificate and key must be supplied as a pair", keyPath)
 	}
 
@@ -172,6 +172,9 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 
 	if opts.useZooKeeperLag {
 		zookeeperClient, err = kazoo.NewKazoo(opts.uriZookeeper, nil)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	interval, err := time.ParseDuration(opts.metadataRefreshInterval)
@@ -242,14 +245,8 @@ func (e *Exporter) backgroundCollect(interval time.Duration) {
 		ms := make([]prometheus.Metric, 0)
 		ch := make(chan prometheus.Metric)
 		go func() {
-			for {
-				select {
-				case m, ok := <-ch:
-					if !ok {
-						return
-					}
-					ms = append(ms, m)
-				}
+			for m := range ch {
+				ms = append(ms, m)
 			}
 		}()
 
@@ -661,13 +658,16 @@ func main() {
 
 	http.Handle(*metricsPath, promhttp.Handler())
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`<html>
+		_, err := w.Write([]byte(`<html>
 	        <head><title>Kafka Exporter</title></head>
 	        <body>
 	        <h1>Kafka Exporter</h1>
 	        <p><a href='` + *metricsPath + `'>Metrics</a></p>
 	        </body>
 	        </html>`))
+		if err != nil {
+			plog.Error(err.Error())
+		}
 	})
 
 	plog.Infoln("Listening on", *listenAddress)
