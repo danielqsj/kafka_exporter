@@ -17,7 +17,7 @@ dockers:
     goos: linux
     goarch: amd64
     ids:
-      - sphinx-exporter
+      - kafka-exporter
     image_templates:
       - "foxdalas/kafka-exporter:v{{ .Version }}-amd64"
     build_flag_templates:
