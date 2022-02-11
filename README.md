@@ -1,7 +1,7 @@
 kafka_exporter
 ==============
 
-[![Build Status](https://travis-ci.org/danielqsj/kafka_exporter.svg?branch=master)](https://travis-ci.org/danielqsj/kafka_exporter)[![Docker Pulls](https://img.shields.io/docker/pulls/danielqsj/kafka-exporter.svg)](https://hub.docker.com/r/danielqsj/kafka-exporter)[![Go Report Card](https://goreportcard.com/badge/github.com/danielqsj/kafka_exporter)](https://goreportcard.com/report/github.com/danielqsj/kafka_exporter)[![Language](https://img.shields.io/badge/language-Go-red.svg)](https://github.com/danielqsj/kafka-exporter)[![GitHub release](https://img.shields.io/badge/release-1.2.0-green.svg)](https://github.com/alibaba/derrick/releases)[![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
+[![Build Status](https://app.travis-ci.com/danielqsj/kafka_exporter.svg?branch=master)](https://app.travis-ci.com/danielqsj/kafka_exporter)[![Docker Pulls](https://img.shields.io/docker/pulls/danielqsj/kafka-exporter.svg)](https://hub.docker.com/r/danielqsj/kafka-exporter)[![Go Report Card](https://goreportcard.com/badge/github.com/danielqsj/kafka_exporter)](https://goreportcard.com/report/github.com/danielqsj/kafka_exporter)[![Language](https://img.shields.io/badge/language-Go-red.svg)](https://github.com/danielqsj/kafka-exporter)[![GitHub release](https://img.shields.io/badge/release-1.4.2-green.svg)](https://github.com/alibaba/derrick/releases)[![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
 
 Kafka exporter for Prometheus. For other metrics from Kafka, have a look at the [JMX exporter](https://github.com/prometheus/jmx_exporter).
 
@@ -23,7 +23,7 @@ Table of Contents
 	-	[Brokers](#brokers)
 	-	[Topics](#topics)
 	-	[Consumer Groups](#consumer-groups)
--	[Grafana Dashboard](#grafana-dashboard)	
+-	[Grafana Dashboard](#grafana-dashboard)
 -   [Contribute](#contribute)
 -   [Donation](#donation)
 -   [License](#license)
@@ -39,7 +39,6 @@ Dependency
 -	[Prometheus](https://prometheus.io)
 -	[Sarama](https://shopify.github.io/sarama)
 -	[Golang](https://golang.org)
--	[Dep](https://github.com/golang/dep)
 
 Download
 --------
@@ -90,25 +89,45 @@ Flags
 
 This image is configurable using different flags
 
-| Flag name                    | Default    | Description                                                                                         |
-| ---------------------------- | ---------- | --------------------------------------------------------------------------------------------------- |
-| kafka.server                 | kafka:9092 | Addresses (host:port) of Kafka server                                                               |
-| kafka.version                | 1.0.0      | Kafka broker version                                                                                |
-| sasl.enabled                 | false      | Connect using SASL/PLAIN                                                                            |
-| sasl.handshake               | true       | Only set this to false if using a non-Kafka SASL proxy                                              |
-| sasl.username                |            | SASL user name                                                                                      |
-| sasl.password                |            | SASL user password                                                                                  |
-| tls.enabled                  | false      | Connect using TLS                                                                                   |
-| tls.ca-file                  |            | The optional certificate authority file for TLS client authentication                               |
-| tls.cert-file                |            | The optional certificate file for client authentication                                             |
-| tls.key-file                 |            | The optional key file for client authentication                                                     |
-| tls.insecure-skip-tls-verify | false      | If true, the server's certificate will not be checked for validity                                  |
-| topic.filter                 | .*         | Regex that determines which topics to collect                                                       |
-| group.filter                 | .*         | Regex that determines which consumer groups to collect                                              |
-| web.listen-address           | :9308      | Address to listen on for web interface and telemetry                                                |
-| web.telemetry-path           | /metrics   | Path under which to expose metrics                                                                  |
-| log.level                    | info       | Only log messages with the given severity or above. Valid levels: [debug, info, warn, error, fatal] |
-| log.enable-sarama            | false      | Turn on Sarama logging                                                                              |
+| Flag name                    | Default        | Description                                                                                                                            |
+|------------------------------|----------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| kafka.server                 | kafka:9092     | Addresses (host:port) of Kafka server                                                                                                  |
+| kafka.version                | 2.0.0          | Kafka broker version                                                                                                                   |
+| sasl.enabled                 | false          | Connect using SASL/PLAIN                                                                                                               |
+| sasl.handshake               | true           | Only set this to false if using a non-Kafka SASL proxy                                                                                 |
+| sasl.username                |                | SASL user name                                                                                                                         |
+| sasl.password                |                | SASL user password                                                                                                                     |
+| sasl.mechanism               |                | SASL mechanism can be plain, scram-sha512, scram-sha256                                                                                |
+| sasl.service-name            |                | Service name when using Kerberos Auth                                                                                                  |
+| sasl.kerberos-config-path    |                | Kerberos config path                                                                                                                   |
+| sasl.realm                   |                | Kerberos realm                                                                                                                         |
+| sasl.keytab-path             |                | Kerberos keytab file path                                                                                                              |
+| sasl.kerberos-auth-type      |                | Kerberos auth type. Either 'keytabAuth' or 'userAuth'                                                                                  |
+| tls.enabled                  | false          | Connect to Kafka using TLS                                                                                                                      |
+| tls.server-name                  |                | Used to verify the hostname on the returned certificates unless tls.insecure-skip-tls-verify is given. The kafka server's name should be given                                                                  |
+| tls.ca-file                  |                | The optional certificate authority file for Kafka TLS client authentication                                                                  |
+| tls.cert-file                |                | The optional certificate file for Kafka client authentication                                                                                |
+| tls.key-file                 |                | The optional key file for Kafka client authentication                                                                                        |
+| tls.insecure-skip-tls-verify | false          | If true, the server's certificate will not be checked for validity                                                                     |
+| server.tls.enabled                  | false          | Enable TLS for web server                                                                                                                      |
+| server.tls.mutual-auth-enabled                  | false          | Enable TLS client mutual authentication                                                                                                                      |
+| server.tls.ca-file                |                | The certificate authority file for the web server                                                                                |
+| server.tls.cert-file                |                | The certificate file for the web server                                                                                |
+| server.tls.key-file                 |                | The key file for the web server                                                                                        |
+| topic.filter                 | .*             | Regex that determines which topics to collect                                                                                          |
+| group.filter                 | .*             | Regex that determines which consumer groups to collect                                                                                 |
+| web.listen-address           | :9308          | Address to listen on for web interface and telemetry                                                                                   |
+| web.telemetry-path           | /metrics       | Path under which to expose metrics                                                                                                     |
+| log.enable-sarama            | false          | Turn on Sarama logging                                                                                                                 |
+| use.consumelag.zookeeper     | false          | if you need to use a group from zookeeper                                                                                              |
+| zookeeper.server             | localhost:2181 | Address (hosts) of zookeeper server                                                                                                    |
+| kafka.labels                 |                | Kafka cluster name                                                                                                                     |
+| refresh.metadata             | 30s            | Metadata refresh interval                                                                                                              |
+| offset.show-all              | true           | Whether show the offset/lag for all consumer group, otherwise, only show connected consumer groups                                     |
+| concurrent.enable            | false          | If true, all scrapes will trigger kafka operations otherwise, they will share results. WARN: This should be disabled on large clusters |
+| topic.workers                | 100            | Number of topic workers                                                                                                                |
+| verbosity                    | 0              | Verbosity log level                                                                                                                    |
+
 
 ### Notes
 
@@ -227,6 +246,15 @@ Contribute
 If you like Kafka Exporter, please give me a star. This will help more people know Kafka Exporter.
 
 Please feel free to send me [pull requests](https://github.com/danielqsj/kafka_exporter/pulls).
+
+Contributors ✨
+----------
+
+Thanks goes to these wonderful people:
+
+<a href="https://github.com/danielqsj/kafka_exporter/graphs/contributors">
+<img src="https://contrib.rocks/image?repo=danielqsj/kafka_exporter" />
+</a>
 
 Donation
 --------
