@@ -42,10 +42,8 @@ func assumeKafka(t *testing.T) bool {
 	}
 	defer client.Close()
 	_, err = client.Topics()
-	if err != nil {
-		return false
-	}
-	return true
+
+	return err == nil
 }
 
 func execute(handler func(response *http.Response)) {

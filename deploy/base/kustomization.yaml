@@ -11,5 +11,5 @@ resources:
 - service.yaml
 
 images:
-- name: danielqsj/kafka-exporter
+- name: foxdalas/kafka-exporter
   newTag: latest

@@ -5,7 +5,7 @@
 replicaCount: 1
 
 image:
-  repository: danielqsj/kafka-exporter
+  repository: foxdalas/kafka-exporter
   tag: latest
   pullPolicy: IfNotPresent
 
