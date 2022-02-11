@@ -24,3 +24,4 @@ kafka_exporter
 
 # Test configuration
 test/
+.DS_Store
