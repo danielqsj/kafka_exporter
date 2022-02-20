@@ -528,8 +528,6 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	}
 	close(topicChannel)
 
-	wg.Wait()
-
 	getConsumerGroupMetrics := func(broker *sarama.Broker) {
 		defer wg.Done()
 		if err := broker.Open(e.client.Config()); err != nil && err != sarama.ErrAlreadyConnected {
@@ -648,10 +646,11 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			wg.Add(1)
 			go getConsumerGroupMetrics(broker)
 		}
-		wg.Wait()
 	} else {
 		glog.Errorln("No valid broker, cannot get consumer group metrics")
 	}
+
+	wg.Wait()
 }
 
 func init() {
