@@ -75,6 +75,7 @@ type Exporter struct {
 	sgWaitCh                chan struct{}
 	sgChans                 []chan<- prometheus.Metric
 	consumerGroupFetchAll   bool
+	pollSingleBroker        bool
 }
 
 type kafkaOpts struct {
@@ -110,6 +111,7 @@ type kafkaOpts struct {
 	topicWorkers             int
 	allowConcurrent          bool
 	verbosityLogLevel        int
+	pollSingleBroker         bool
 }
 
 // CanReadCertAndKey returns true if the certificate and key files already exists,
@@ -272,6 +274,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		sgWaitCh:                nil,
 		sgChans:                 []chan<- prometheus.Metric{},
 		consumerGroupFetchAll:   config.Version.IsAtLeast(sarama.V2_0_0_0),
+		pollSingleBroker:        opts.pollSingleBroker,
 	}, nil
 }
 
@@ -647,6 +650,10 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 		for _, broker := range e.client.Brokers() {
 			wg.Add(1)
 			go getConsumerGroupMetrics(broker)
+			if e.pollSingleBroker {
+				// if pollSingleBroker is set, exit the loop after polling the first broker.
+				break
+			}
 		}
 		wg.Wait()
 	} else {
@@ -737,6 +744,7 @@ func main() {
 	toFlagBoolVar("concurrent.enable", "If true, all scrapes will trigger kafka operations otherwise, they will share results. WARN: This should be disabled on large clusters", false, "false", &opts.allowConcurrent)
 	toFlagIntVar("topic.workers", "Number of topic workers", 100, "100", &opts.topicWorkers)
 	toFlagIntVar("verbosity", "Verbosity log level", 0, "0", &opts.verbosityLogLevel)
+	toFlagBoolVar("pollSingleBroker", "If true, only a single broker will be polled for group metadata information. This is useful for load-balanced brokers, like Oracle Streaming Service", false, "false", &opts.pollSingleBroker)
 
 	plConfig := plog.Config{}
 	plogflag.AddFlags(kingpin.CommandLine, &plConfig)
