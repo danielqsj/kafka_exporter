@@ -42,7 +42,7 @@ kafkaExporter:
 
 prometheus:
   serviceMonitor:
-    enabled: true
+    enabled: false
     namespace: monitoring
     interval: "30s"
     additionalLabels:
@@ -51,6 +51,7 @@ prometheus:
 
 labels: {}
 podLabels: {}
+datadog_prefix: this_value_to_be_prefixed_to_every_metric_when_viewed_in_Datadog
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
