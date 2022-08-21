@@ -42,7 +42,7 @@ kafkaExporter:
 
 prometheus:
   serviceMonitor:
-    enabled: false
+    enabled: true
     namespace: monitoring
     interval: "30s"
     additionalLabels:
@@ -51,7 +51,18 @@ prometheus:
 
 labels: {}
 podLabels: {}
-datadog_prefix: this_value_to_be_prefixed_to_every_metric_when_viewed_in_Datadog
+
+# Adds in Datadog annotations needed to scrape the prometheus endpoint.
+# prefix is required. If added, will provide a metric such as test.kafka_brokers.
+# Example metrics below. map metric name to a potential new metric name in dd.
+datadog:
+  use_datadog: false
+  prefix: <dd_prefix>
+  metrics: [
+    {"kafka_brokers": "kafka_brokers"},
+    {"kafka_consumergroup_lag": "kafka_consumergroup_lag"},
+    {"kafka_consumergroup_current_offset": "kafka_consumergroup_current_offset"}
+    ]
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious

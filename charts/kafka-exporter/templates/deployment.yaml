@@ -18,23 +18,21 @@ spec:
       app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
+      {{- if eq .Values.datadog.use_datadog true }}
       annotations:
         ad.datadoghq.com/{{ .Chart.Name }}.check_names: |
-                ["openmetrics"]
+          ["openmetrics"]
         ad.datadoghq.com/{{ .Chart.Name }}.init_configs: |
-                [{}]
+            [{}]
         ad.datadoghq.com/{{ .Chart.Name }}.instances: |
           [
             {
-              "openmetrics_endpoint": "http://%%host%%:%%port%%/metrics ",
-              "namespace": "{{ .Values.datadog_prefix }}",
-              "metrics": [
-                {"kafka_brokers":"kafka_brokers"},
-                {"kafka_consumergroup_lag":"kafka_consumergroup_lag"},
-                {"kafka_consumergroup_current_offset":"kafka_consumergroup_current_offset"}
-               ]
+              "openmetrics_endpoint": "http://{{ include "kafka-exporter.fullname" . }}:{{ .Values.service.port }}/metrics",
+              "namespace": "{{ .Values.datadog.prefix }}",
+              "metrics": {{ .Values.datadog.metrics | toJson | nindent 16 -}}
             }
-          ]      
+           ]
+      {{- end }}    
       labels:
         app.kubernetes.io/name: {{ include "kafka-exporter.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
