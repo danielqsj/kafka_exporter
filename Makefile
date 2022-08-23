@@ -37,7 +37,7 @@ build: promu
 
 crossbuild: promu
 	@echo ">> crossbuilding binaries"
-	@$(PROMU) crossbuild --go=1.17
+	@$(PROMU) crossbuild --go=1.19
 
 tarball: promu
 	@echo ">> building release tarball"
@@ -64,7 +64,7 @@ release: promu github-release
 promu:
 	@GOOS=$(shell uname -s | tr A-Z a-z) \
 		GOARCH=$(subst x86_64,amd64,$(patsubst i%86,386,$(shell uname -m))) \
-		$(GO) install github.com/prometheus/promu@v0.12.0
+		$(GO) install github.com/prometheus/promu@v0.13.0
 
 github-release:
 	@GOOS=$(shell uname -s | tr A-Z a-z) \
