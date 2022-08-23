@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"flag"
 	"fmt"
-	"github.com/krallistic/kazoo-go"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -17,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
+	"github.com/krallistic/kazoo-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
