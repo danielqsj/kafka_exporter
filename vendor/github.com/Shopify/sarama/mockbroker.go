@@ -3,6 +3,7 @@ package sarama
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -30,9 +31,9 @@ type RequestNotifierFunc func(bytesRead, bytesWritten int)
 // to facilitate testing of higher level or specialized consumers and producers
 // built on top of Sarama. Note that it does not 'mimic' the Kafka API protocol,
 // but rather provides a facility to do that. It takes care of the TCP
-// transport, request unmarshalling, response marshalling, and makes it the test
+// transport, request unmarshalling, response marshaling, and makes it the test
 // writer responsibility to program correct according to the Kafka API protocol
-// MockBroker behaviour.
+// MockBroker behavior.
 //
 // MockBroker is implemented as a TCP server listening on a kernel-selected
 // localhost port that can accept many connections. It reads Kafka requests
@@ -83,9 +84,13 @@ func (b *MockBroker) SetLatency(latency time.Duration) {
 // and uses the found MockResponse instance to generate an appropriate reply.
 // If the request type is not found in the map then nothing is sent.
 func (b *MockBroker) SetHandlerByMap(handlerMap map[string]MockResponse) {
+	fnMap := make(map[string]MockResponse)
+	for k, v := range handlerMap {
+		fnMap[k] = v
+	}
 	b.setHandler(func(req *request) (res encoderWithHeader) {
 		reqTypeName := reflect.TypeOf(req.body).Elem().Name()
-		mockResponse := handlerMap[reqTypeName]
+		mockResponse := fnMap[reqTypeName]
 		if mockResponse == nil {
 			return nil
 		}
@@ -355,9 +360,10 @@ func (b *MockBroker) defaultRequestHandler(req *request) (res encoderWithHeader)
 
 func (b *MockBroker) serverError(err error) {
 	isConnectionClosedError := false
-	if _, ok := err.(*net.OpError); ok {
+	opError := &net.OpError{}
+	if errors.As(err, &opError) {
 		isConnectionClosedError = true
-	} else if err == io.EOF {
+	} else if errors.Is(err, io.EOF) {
 		isConnectionClosedError = true
 	} else if err.Error() == "use of closed network connection" {
 		isConnectionClosedError = true
