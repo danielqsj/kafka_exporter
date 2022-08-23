@@ -18,13 +18,13 @@ jobs:
           go-version: 1.19
       - uses: olegtarasov/get-tag@v2.1
         id: tagName
-      - name: Release docker Image
+      - name: Release Docker Image
         run: make push
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
           TAG: $GIT_TAG_NAME
-      - name: Release binary
+      - name: Release Binary
         run: make crossbuild release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
