@@ -119,9 +119,11 @@ func New(config *Config) log.Logger {
 	}
 
 	if config.Level != nil {
+		l = log.With(l, "ts", timestampFormat, "caller", log.Caller(5))
 		l = level.NewFilter(l, config.Level.o)
+	} else {
+		l = log.With(l, "ts", timestampFormat, "caller", log.DefaultCaller)
 	}
-	l = log.With(l, "ts", timestampFormat, "caller", log.DefaultCaller)
 	return l
 }
 
@@ -135,15 +137,16 @@ func NewDynamic(config *Config) *logger {
 	} else {
 		l = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 	}
-	l = log.With(l, "ts", timestampFormat, "caller", log.DefaultCaller)
 
 	lo := &logger{
 		base:    l,
 		leveled: l,
 	}
+
 	if config.Level != nil {
 		lo.SetLevel(config.Level)
 	}
+
 	return lo
 }
 
@@ -165,11 +168,15 @@ func (l *logger) Log(keyvals ...interface{}) error {
 func (l *logger) SetLevel(lvl *AllowedLevel) {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
-	if lvl != nil {
-		if l.currentLevel != nil && l.currentLevel.s != lvl.s {
-			_ = l.base.Log("msg", "Log level changed", "prev", l.currentLevel, "current", lvl)
-		}
-		l.currentLevel = lvl
+	if lvl == nil {
+		l.leveled = log.With(l.base, "ts", timestampFormat, "caller", log.DefaultCaller)
+		l.currentLevel = nil
+		return
 	}
-	l.leveled = level.NewFilter(l.base, lvl.o)
+
+	if l.currentLevel != nil && l.currentLevel.s != lvl.s {
+		_ = l.base.Log("msg", "Log level changed", "prev", l.currentLevel, "current", lvl)
+	}
+	l.currentLevel = lvl
+	l.leveled = level.NewFilter(log.With(l.base, "ts", timestampFormat, "caller", log.Caller(5)), lvl.o)
 }

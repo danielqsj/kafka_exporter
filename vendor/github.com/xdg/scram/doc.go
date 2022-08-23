@@ -4,9 +4,7 @@
 // not use this file except in compliance with the License. You may obtain
 // a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 
-// Package scram provides client and server implementations of the Salted
-// Challenge Response Authentication Mechanism (SCRAM) described in RFC-5802
-// and RFC-7677.
+// Package scram is deprecated in favor of xdg-go/scram.
 //
 // Usage
 //

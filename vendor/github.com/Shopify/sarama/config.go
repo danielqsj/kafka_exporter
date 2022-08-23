@@ -4,7 +4,7 @@ import (
 	"compress/gzip"
 	"crypto/tls"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"regexp"
 	"time"
@@ -38,6 +38,9 @@ type Config struct {
 	Net struct {
 		// How many outstanding requests a connection is allowed to have before
 		// sending on it blocks (default 5).
+		// Throughput can improve but message ordering is not guaranteed if Producer.Idempotent is disabled, see:
+		// https://kafka.apache.org/protocol#protocol_network
+		// https://kafka.apache.org/28/documentation.html#producerconfigs_max.in.flight.requests.per.connection
 		MaxOpenRequests int
 
 		// All three of the below configurations are similar to the
@@ -148,6 +151,11 @@ type Config struct {
 		// `Net.[Dial|Read]Timeout * BrokerCount * (Metadata.Retry.Max + 1) + Metadata.Retry.Backoff * Metadata.Retry.Max`
 		// to fail.
 		Timeout time.Duration
+
+		// Whether to allow auto-create topics in metadata refresh. If set to true,
+		// the broker may auto-create topics that we requested which do not already exist,
+		// if it is configured to do so (`auto.create.topics.enable` is true). Defaults to true.
+		AllowAutoTopicCreation bool
 	}
 
 	// Producer is the namespace for configuration related to producing messages,
@@ -288,6 +296,17 @@ type Config struct {
 				// coordinator for the group.
 				UserData []byte
 			}
+
+			// support KIP-345
+			InstanceId string
+
+			// If true, consumer offsets will be automatically reset to configured Initial value
+			// if the fetched consumer offset is out of range of available offsets. Out of range
+			// can happen if the data has been deleted from the server, or during situations of
+			// under-replication where a replica does not have all the data yet. It can be
+			// dangerous to reset the offset automatically, particularly in the latter case. Defaults
+			// to true to maintain existing behavior.
+			ResetInvalidOffsets bool
 		}
 
 		Retry struct {
@@ -422,6 +441,11 @@ type Config struct {
 	// in the background while user code is working, greatly improving throughput.
 	// Defaults to 256.
 	ChannelBufferSize int
+	// ApiVersionsRequest determines whether Sarama should send an
+	// ApiVersionsRequest message to each broker as part of its initial
+	// connection. This defaults to `true` to match the official Java client
+	// and most 3rdparty ones.
+	ApiVersionsRequest bool
 	// The version of Kafka that Sarama will assume it is running against.
 	// Defaults to the oldest supported stable version. Since Kafka provides
 	// backwards-compatibility, setting it to a version older than you have
@@ -456,6 +480,7 @@ func NewConfig() *Config {
 	c.Metadata.Retry.Backoff = 250 * time.Millisecond
 	c.Metadata.RefreshFrequency = 10 * time.Minute
 	c.Metadata.Full = true
+	c.Metadata.AllowAutoTopicCreation = true
 
 	c.Producer.MaxMessageBytes = 1000000
 	c.Producer.RequiredAcks = WaitForLocal
@@ -469,7 +494,7 @@ func NewConfig() *Config {
 	c.Consumer.Fetch.Min = 1
 	c.Consumer.Fetch.Default = 1024 * 1024
 	c.Consumer.Retry.Backoff = 2 * time.Second
-	c.Consumer.MaxWaitTime = 250 * time.Millisecond
+	c.Consumer.MaxWaitTime = 500 * time.Millisecond
 	c.Consumer.MaxProcessingTime = 100 * time.Millisecond
 	c.Consumer.Return.Errors = false
 	c.Consumer.Offsets.AutoCommit.Enable = true
@@ -483,9 +508,11 @@ func NewConfig() *Config {
 	c.Consumer.Group.Rebalance.Timeout = 60 * time.Second
 	c.Consumer.Group.Rebalance.Retry.Max = 4
 	c.Consumer.Group.Rebalance.Retry.Backoff = 2 * time.Second
+	c.Consumer.Group.ResetInvalidOffsets = false
 
 	c.ClientID = defaultClientID
 	c.ChannelBufferSize = 256
+	c.ApiVersionsRequest = true
 	c.Version = DefaultVersion
 	c.MetricRegistry = metrics.NewRegistry()
 
@@ -494,6 +521,8 @@ func NewConfig() *Config {
 
 // Validate checks a Config instance. It will return a
 // ConfigurationError if the specified values don't make sense.
+//
+//nolint:gocyclo // This function's cyclomatic complexity has go beyond 100
 func (c *Config) Validate() error {
 	// some configuration values should be warned on but not fail completely, do those first
 	if !c.Net.TLS.Enable && c.Net.TLS.Config != nil {
@@ -663,7 +692,7 @@ func (c *Config) Validate() error {
 
 	if c.Producer.Compression == CompressionGZIP {
 		if c.Producer.CompressionLevel != CompressionLevelDefault {
-			if _, err := gzip.NewWriterLevel(ioutil.Discard, c.Producer.CompressionLevel); err != nil {
+			if _, err := gzip.NewWriterLevel(io.Discard, c.Producer.CompressionLevel); err != nil {
 				return ConfigurationError(fmt.Sprintf("gzip compression does not work with level %d: %v", c.Producer.CompressionLevel, err))
 			}
 		}
@@ -739,6 +768,14 @@ func (c *Config) Validate() error {
 	case c.Consumer.Group.Rebalance.Retry.Backoff < 0:
 		return ConfigurationError("Consumer.Group.Rebalance.Retry.Backoff must be >= 0")
 	}
+	if c.Consumer.Group.InstanceId != "" {
+		if !c.Version.IsAtLeast(V2_3_0_0) {
+			return ConfigurationError("Consumer.Group.InstanceId need Version >= 2.3")
+		}
+		if err := validateGroupInstanceId(c.Consumer.Group.InstanceId); err != nil {
+			return err
+		}
+	}
 
 	// validate misc shared values
 	switch {
@@ -762,4 +799,24 @@ func (c *Config) getDialer() proxy.Dialer {
 			LocalAddr: c.Net.LocalAddr,
 		}
 	}
+}
+
+const MAX_GROUP_INSTANCE_ID_LENGTH = 249
+
+var GROUP_INSTANCE_ID_REGEXP = regexp.MustCompile(`^[0-9a-zA-Z\._\-]+$`)
+
+func validateGroupInstanceId(id string) error {
+	if id == "" {
+		return ConfigurationError("Group instance id must be non-empty string")
+	}
+	if id == "." || id == ".." {
+		return ConfigurationError(`Group instance id cannot be "." or ".."`)
+	}
+	if len(id) > MAX_GROUP_INSTANCE_ID_LENGTH {
+		return ConfigurationError(fmt.Sprintf(`Group instance id cannot be longer than %v, characters: %s`, MAX_GROUP_INSTANCE_ID_LENGTH, id))
+	}
+	if !GROUP_INSTANCE_ID_REGEXP.MatchString(id) {
+		return ConfigurationError(fmt.Sprintf(`Group instance id %s is illegal, it contains a character other than, '.', '_' and '-'`, id))
+	}
+	return nil
 }

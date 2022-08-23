@@ -3,22 +3,24 @@ package sarama
 import (
 	"encoding/binary"
 	"math"
+
+	"github.com/rcrowley/go-metrics"
 )
 
 var (
-	errInvalidArrayLength      = PacketDecodingError{"invalid array length"}
-	errInvalidByteSliceLength  = PacketDecodingError{"invalid byteslice length"}
-	errInvalidStringLength     = PacketDecodingError{"invalid string length"}
-	errVarintOverflow          = PacketDecodingError{"varint overflow"}
-	errUVarintOverflow         = PacketDecodingError{"uvarint overflow"}
-	errInvalidBool             = PacketDecodingError{"invalid bool"}
-	errUnsupportedTaggedFields = PacketDecodingError{"non-empty tagged fields are not supported yet"}
+	errInvalidArrayLength     = PacketDecodingError{"invalid array length"}
+	errInvalidByteSliceLength = PacketDecodingError{"invalid byteslice length"}
+	errInvalidStringLength    = PacketDecodingError{"invalid string length"}
+	errVarintOverflow         = PacketDecodingError{"varint overflow"}
+	errUVarintOverflow        = PacketDecodingError{"uvarint overflow"}
+	errInvalidBool            = PacketDecodingError{"invalid bool"}
 )
 
 type realDecoder struct {
-	raw   []byte
-	off   int
-	stack []pushDecoder
+	raw      []byte
+	off      int
+	stack    []pushDecoder
+	registry metrics.Registry
 }
 
 // primitives
@@ -93,6 +95,16 @@ func (rd *realDecoder) getUVarint() (uint64, error) {
 	return tmp, nil
 }
 
+func (rd *realDecoder) getFloat64() (float64, error) {
+	if rd.remaining() < 8 {
+		rd.off = len(rd.raw)
+		return -1, ErrInsufficientData
+	}
+	tmp := math.Float64frombits(binary.BigEndian.Uint64(rd.raw[rd.off:]))
+	rd.off += 8
+	return tmp, nil
+}
+
 func (rd *realDecoder) getArrayLength() (int, error) {
 	if rd.remaining() < 4 {
 		rd.off = len(rd.raw)
@@ -139,8 +151,21 @@ func (rd *realDecoder) getEmptyTaggedFieldArray() (int, error) {
 		return 0, err
 	}
 
-	if tagCount != 0 {
-		return 0, errUnsupportedTaggedFields
+	// skip over any tagged fields without deserializing them
+	// as we don't currently support doing anything with them
+	for i := uint64(0); i < tagCount; i++ {
+		// fetch and ignore tag identifier
+		_, err := rd.getUVarint()
+		if err != nil {
+			return 0, err
+		}
+		length, err := rd.getUVarint()
+		if err != nil {
+			return 0, err
+		}
+		if _, err := rd.getRawBytes(int(length)); err != nil {
+			return 0, err
+		}
 	}
 
 	return 0, nil
@@ -230,7 +255,9 @@ func (rd *realDecoder) getCompactString() (string, error) {
 	}
 
 	length := int(n - 1)
-
+	if length < 0 {
+		return "", errInvalidByteSliceLength
+	}
 	tmpStr := string(rd.raw[rd.off : rd.off+length])
 	rd.off += length
 	return tmpStr, nil
@@ -434,4 +461,8 @@ func (rd *realDecoder) pop() error {
 	rd.stack = rd.stack[:len(rd.stack)-1]
 
 	return in.check(rd.off, rd.raw)
+}
+
+func (rd *realDecoder) metricRegistry() metrics.Registry {
+	return rd.registry
 }
