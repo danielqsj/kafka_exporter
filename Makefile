@@ -105,15 +105,9 @@ lint: golangci-lint
 # download golangci-lint if necessary
 golangci-lint:
 ifeq (, $(shell which golangci-lint))
-	@{ \
-	set -e ;\
-	export GO111MODULE=on; \
-	GOLANG_LINT_TMP_DIR=$$(mktemp -d) ;\
-	cd $$GOLANG_LINT_TMP_DIR ;\
-	go mod init tmp ;\
-	go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.48.0 ;\
-	rm -rf $$GOLANG_LINT_TMP_DIR ;\
-	}
+	@GOOS=$(shell uname -s | tr A-Z a-z) \
+    		GOARCH=$(subst x86_64,amd64,$(patsubst i%86,386,$(shell uname -m))) \
+    		$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.48.0
 GOLANG_LINT=$(shell go env GOPATH)/bin/golangci-lint
 else
 GOLANG_LINT=$(shell which golangci-lint)

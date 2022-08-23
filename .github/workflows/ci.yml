@@ -1,0 +1,73 @@
+---
+name: CI
+on:
+  # Run this workflow every time a new commit pushed to upstream/fork repository.
+  # Run workflow on fork repository will help contributors find and resolve issues before sending a PR.
+  push:
+  pull_request:
+jobs:
+  golangci:
+    name: pull-kafka-exporter-golang-ci
+    env:
+      GOPATH: ${{ github.workspace }}
+      GO111MODULE: on
+    defaults:
+      run:
+        working-directory: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+    strategy:
+      max-parallel: 3
+      ## this will contain a matrix of all of the combinations
+      ## we wish to test again:
+      matrix:
+        go-version: [ 1.19.x ]
+        os: [ ubuntu-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: ${{ matrix.go-version }}
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+          path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+      - name: Cache go modules and build cache
+        uses: actions/cache@v3.0.0
+        with:
+          # In order:
+          # * Module download cache
+          # * Build cache (Linux)
+          # * Build cache (Mac)
+          # * Build cache (Windows)
+          path: |
+            ${{ env.GOPATH }}/pkg/mod
+            ${{ env.GOPATH }}/pkg/sumdb
+            ~/.cache/go-build
+            ~/Library/Caches/go-build
+          #  %LocalAppData%\go-build
+          key: ${{ matrix.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ matrix.os }}-go-
+      - name: Golang Format
+        run: |
+          make fmt
+          STATUS=$(git status --porcelain go.mod go.sum)
+          if [ ! -z "$STATUS" ]; then
+            echo "Running 'make fmt' to format your codes"
+            exit 1
+          fi
+      - name: Golang Lint
+        run: make lint
+      - name: Golang Vet
+        run: make vet
+      - name: Tidy Go Module
+        run: |
+          echo "verifying if there is any unused dependency in go module"
+          make tidy
+          STATUS=$(git status --porcelain go.mod go.sum)
+          if [ ! -z "$STATUS" ]; then
+            echo "Running 'make tidy' to fix your 'go.mod' and/or 'go.sum'"
+            exit 1
+          fi
+          echo "go module is tidy."
