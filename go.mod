@@ -41,9 +41,12 @@ require (
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 )
 
+require k8s.io/klog/v2 v2.70.1
+
 require (
 	github.com/go-kit/log v0.1.0 // indirect
 	github.com/go-logfmt/logfmt v0.5.0 // indirect
+	github.com/go-logr/logr v1.2.0 // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/pierrec/lz4/v4 v4.1.15 // indirect
