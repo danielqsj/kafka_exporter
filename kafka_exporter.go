@@ -41,6 +41,7 @@ const (
 
 var (
 	clusterBrokers                     *prometheus.Desc
+	clusterBrokerInfo                  *prometheus.Desc
 	topicPartitions                    *prometheus.Desc
 	topicCurrentOffset                 *prometheus.Desc
 	topicOldestOffset                  *prometheus.Desc
@@ -361,6 +362,11 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(
 		clusterBrokers, prometheus.GaugeValue, float64(len(e.client.Brokers())),
 	)
+	for _, b := range e.client.Brokers() {
+		ch <- prometheus.MustNewConstMetric(
+			clusterBrokerInfo, prometheus.GaugeValue, 1, strconv.Itoa(int(b.ID())), b.Addr(),
+		)
+	}
 
 	offset := make(map[string]map[int32]int64)
 
@@ -782,6 +788,11 @@ func setup(
 		prometheus.BuildFQName(namespace, "", "brokers"),
 		"Number of Brokers in the Kafka Cluster.",
 		nil, labels,
+	)
+	clusterBrokerInfo = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "", "broker_info"),
+		"Information about the Kafka Broker.",
+		[]string{"id", "address"}, labels,
 	)
 	topicPartitions = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "topic", "partitions"),
