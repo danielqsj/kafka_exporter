@@ -276,17 +276,17 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 	}, nil
 }
 
-func (e *Exporter) fetchOffsetVersion() int16 {
-	version := e.client.Config().Version
-	if e.client.Config().Version.IsAtLeast(sarama.V2_0_0_0) {
-		return 4
-	} else if version.IsAtLeast(sarama.V0_10_2_0) {
-		return 2
-	} else if version.IsAtLeast(sarama.V0_8_2_2) {
-		return 1
-	}
-	return 0
-}
+//func (e *Exporter) fetchOffsetVersion() int16 {
+//	version := e.client.Config().Version
+//	if e.client.Config().Version.IsAtLeast(sarama.V2_0_0_0) {
+//		return 4
+//	} else if version.IsAtLeast(sarama.V0_10_2_0) {
+//		return 2
+//	} else if version.IsAtLeast(sarama.V0_8_2_2) {
+//		return 1
+//	}
+//	return 0
+//}
 
 // Describe describes all the metrics ever exported by the Kafka exporter. It
 // implements prometheus.Collector.
@@ -498,7 +498,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 		}
 	}
 
-	loopTopics := func(id int) {
+	loopTopics := func() {
 		ok := true
 		for ok {
 			topic, open := <-topicChannel
@@ -523,7 +523,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	}
 
 	for w := 1; w <= N; w++ {
-		go loopTopics(w)
+		go loopTopics()
 	}
 
 	for _, topic := range topics {
@@ -664,10 +664,11 @@ func init() {
 	metrics.UseNilMetrics = true
 	prometheus.MustRegister(version.NewCollector("kafka_exporter"))
 }
-func toFlag(name string, help string) *kingpin.FlagClause {
-	flag.CommandLine.String(name, "", help) // hack around flag.Parse and glog.init flags
-	return kingpin.Flag(name, help)
-}
+
+//func toFlag(name string, help string) *kingpin.FlagClause {
+//	flag.CommandLine.String(name, "", help) // hack around flag.Parse and glog.init flags
+//	return kingpin.Flag(name, help)
+//}
 
 // hack around flag.Parse and glog.init flags
 func toFlagString(name string, help string, value string) *string {
@@ -775,9 +776,12 @@ func setup(
 	labels map[string]string,
 ) {
 	if err := flag.Set("logtostderr", "true"); err != nil {
-		glog.Errorf("Error on setting logtostderr to true")
+		glog.Error("Error on setting logtostderr to true", err)
 	}
-	flag.Set("v", strconv.Itoa(opts.verbosityLogLevel))
+	err := flag.Set("v", strconv.Itoa(opts.verbosityLogLevel))
+	if err != nil {
+		glog.Errorf("Error on setting v to "+strconv.Itoa(opts.verbosityLogLevel), err)
+	}
 	flag.Parse()
 	defer glog.Flush()
 
@@ -889,17 +893,23 @@ func setup(
 
 	http.Handle(metricsPath, promhttp.Handler())
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`<html>
+		_, err := w.Write([]byte(`<html>
 	        <head><title>Kafka Exporter</title></head>
 	        <body>
 	        <h1>Kafka Exporter</h1>
 	        <p><a href='` + metricsPath + `'>Metrics</a></p>
 	        </body>
 	        </html>`))
+		if err != nil {
+			glog.Error("Error handle / request", err)
+		}
 	})
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		// need more specific sarama check
-		w.Write([]byte("ok"))
+		_, err := w.Write([]byte("ok"))
+		if err != nil {
+			glog.Error("Error handle /healthz request", err)
+		}
 	})
 
 	if opts.serverUseTLS {

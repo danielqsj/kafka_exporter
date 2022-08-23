@@ -98,8 +98,7 @@ lint: golangci-lint
       -E unparam \
       -E unconvert \
       -E govet \
-      -E errcheck \
-      -E structcheck
+      -E errcheck
 
 # find or download golangci-lint
 # download golangci-lint if necessary

@@ -2,12 +2,13 @@ package main
 
 import (
 	"errors"
-	"github.com/Shopify/sarama"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/Shopify/sarama"
 )
 
 var bootstrap_servers = []string{"localhost:9092"}
@@ -15,7 +16,7 @@ var bootstrap_servers = []string{"localhost:9092"}
 func TestSmoke(t *testing.T) {
 	log.Print("testing " + t.Name())
 
-	if !assumeKafka(t) {
+	if !assumeKafka() {
 		t.Skip("Kafka is not running ... skipping the test")
 		return
 	}
@@ -35,7 +36,7 @@ func TestSmoke(t *testing.T) {
 	})
 }
 
-func assumeKafka(t *testing.T) bool {
+func assumeKafka() bool {
 	client, err := sarama.NewClient(bootstrap_servers, nil)
 	if err != nil {
 		return false
