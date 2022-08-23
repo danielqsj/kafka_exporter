@@ -71,4 +71,51 @@ github-release:
 		GOARCH=$(subst x86_64,amd64,$(patsubst i%86,386,$(shell uname -m))) \
 		$(GO) install github.com/github-release/github-release@v0.10.0
 
+# Run go fmt against code
+.PHONY: fmt
+fmt:
+	@find . -type f -name '*.go'| grep -v "/vendor/" | xargs gofmt -w -s
+
+# Run mod tidy against code
+.PHONY: tidy
+tidy:
+	@go mod tidy
+
+# Run golang lint against code
+.PHONY: lint
+lint: golangci-lint
+	@$(GOLANG_LINT) run \
+      --timeout 30m \
+      --disable-all \
+      -E deadcode \
+      -E unused \
+      -E varcheck \
+      -E ineffassign \
+      -E goimports \
+      -E gofmt \
+      -E misspell \
+      -E unparam \
+      -E unconvert \
+      -E govet \
+      -E errcheck \
+      -E structcheck
+
+# find or download golangci-lint
+# download golangci-lint if necessary
+golangci-lint:
+ifeq (, $(shell which golangci-lint))
+	@{ \
+	set -e ;\
+	export GO111MODULE=on; \
+	GOLANG_LINT_TMP_DIR=$$(mktemp -d) ;\
+	cd $$GOLANG_LINT_TMP_DIR ;\
+	go mod init tmp ;\
+	go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.48.0 ;\
+	rm -rf $$GOLANG_LINT_TMP_DIR ;\
+	}
+GOLANG_LINT=$(shell go env GOPATH)/bin/golangci-lint
+else
+GOLANG_LINT=$(shell which golangci-lint)
+endif
+
 .PHONY: all style format build test vet tarball docker promu
