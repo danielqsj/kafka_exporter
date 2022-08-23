@@ -25,6 +25,6 @@ jobs:
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
           TAG: $GIT_TAG_NAME
       - name: Release Binary
-        run: make crossbuild release
+        run: make release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
