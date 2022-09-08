@@ -565,6 +565,9 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			return
 		}
 		for _, group := range describeGroups.Groups {
+			if group.State != "Stable" {
+				continue
+			}
 			offsetFetchRequest := sarama.OffsetFetchRequest{ConsumerGroup: group.GroupId, Version: 1}
 			if e.offsetShowAll {
 				for topic, partitions := range offset {
