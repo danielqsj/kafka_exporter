@@ -1,3 +1,5 @@
+![kafka_exporter](https://socialify.git.ci/danielqsj/kafka_exporter/image?description=1&font=Inter&forks=1&pattern=Signal&stargazers=1&theme=Light)
+
 kafka_exporter
 ==============
 
