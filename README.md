@@ -258,6 +258,11 @@ Thanks goes to these wonderful people:
 <img src="https://contrib.rocks/image?repo=danielqsj/kafka_exporter" />
 </a>
 
+Star ⭐
+----------
+
+[![Stargazers over time](https://starchart.cc/danielqsj/kafka_exporter.svg)](https://starchart.cc/danielqsj/kafka_exporter)
+
 Donation
 --------
 
