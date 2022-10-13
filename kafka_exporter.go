@@ -591,7 +591,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			}
 			for _, member := range group.Members {
 				assignment, err := member.GetMemberAssignment()
-				if err == nil {
+				if err == nil && assignment != nil && assignment.Topics != nil {
 					for topic, partitions := range assignment.Topics {
 						for _, partition := range partitions {
 							topicPartitionAssignments[topic][partition] = member
