@@ -1,9 +1,9 @@
-GO    := GO15VENDOREXPERIMENT=1 go
+GO    := go
 PROMU := $(GOPATH)/bin/promu
 pkgs   = $(shell $(GO) list ./... | grep -v /vendor/)
 
 PREFIX                  ?= $(shell pwd)
-BIN_DIR                 ?= $(shell pwd)
+BIN_DIR                 ?= $(shell pwd)/build
 DOCKER_IMAGE_NAME       ?= kafka-exporter
 DOCKER_IMAGE_TAG        ?= $(subst /,-,$(shell git rev-parse --abbrev-ref HEAD))
 TAG 					:= $(shell echo `if [ "$(TRAVIS_BRANCH)" = "master" ] || [ "$(TRAVIS_BRANCH)" = "" ] ; then echo "latest"; else echo $(TRAVIS_BRANCH) ; fi`)
@@ -12,6 +12,9 @@ PUSHTAG                 ?= type=registry,push=true
 DOCKER_PLATFORMS        ?= linux/amd64,linux/s390x,linux/arm64,linux/ppc64le
 
 all: format build test
+
+clean:
+	rm -rf $(BIN_DIR)/*
 
 style:
 	@echo ">> checking code style"
@@ -37,7 +40,7 @@ build: promu
 
 crossbuild: promu
 	@echo ">> crossbuilding binaries"
-	@$(PROMU) crossbuild --go=1.17
+	@$(PROMU) crossbuild --go=1.19
 
 tarball: promu
 	@echo ">> building release tarball"

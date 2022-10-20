@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"regexp"
 	"strconv"
@@ -141,12 +142,10 @@ func CanReadCertAndKey(certPath, keyPath string) (bool, error) {
 // If the file represented by path exists and
 // readable, returns true otherwise returns false.
 func canReadFile(path string) bool {
-	f, err := os.Open(path)
+	_, err := os.Open(path)
 	if err != nil {
 		return false
 	}
-
-	defer f.Close()
 
 	return true
 }
@@ -885,6 +884,9 @@ func setup(
 			glog.Error(err)
 		}
 	})
+	// Enable pprof
+	http.HandleFunc("/debug/pprof", pprof.Index)
+	http.HandleFunc("/debug/pprof/{action}", pprof.Index)
 
 	if opts.serverUseTLS {
 		glog.V(INFO).Infoln("Listening on HTTPS", listenAddress)
@@ -901,7 +903,7 @@ func setup(
 
 		certPool := x509.NewCertPool()
 		if opts.serverTlsCAFile != "" {
-			if caCert, err := ioutil.ReadFile(opts.serverTlsCAFile); err == nil {
+			if caCert, err := os.ReadFile(opts.serverTlsCAFile); err == nil {
 				certPool.AppendCertsFromPEM(caCert)
 			} else {
 				glog.Error("error reading server ca")
