@@ -78,7 +78,7 @@ type Exporter struct {
 	consumerGroupFetchAll   bool
 }
 
-type kafkaOpts struct {
+type KafkaOpts struct {
 	uri                      []string
 	useSASL                  bool
 	useSASLHandshake         bool
@@ -149,7 +149,7 @@ func canReadFile(path string) bool {
 }
 
 // NewExporter returns an initialized Exporter.
-func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Exporter, error) {
+func NewExporter(opts KafkaOpts, topicFilter string, groupFilter string) (*Exporter, error) {
 	var zookeeperClient *kazoo.Kazoo
 	config := sarama.NewConfig()
 	config.ClientID = clientID
@@ -712,7 +712,7 @@ func main() {
 		groupFilter   = toFlagString("group.filter", "Regex that determines which consumer groups to collect.", ".*")
 		logSarama     = toFlagBool("log.enable-sarama", "Turn on Sarama logging, default is false.", false, "false")
 
-		opts = kafkaOpts{}
+		opts = KafkaOpts{}
 	)
 
 	toFlagStringsVar("kafka.server", "Address (host:port) of Kafka server.", "kafka:9092", &opts.uri)
@@ -776,7 +776,7 @@ func setup(
 	topicFilter string,
 	groupFilter string,
 	logSarama bool,
-	opts kafkaOpts,
+	opts KafkaOpts,
 	labels map[string]string,
 ) {
 	klog.InitFlags(flag.CommandLine)
