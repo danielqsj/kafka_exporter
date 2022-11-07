@@ -64,7 +64,7 @@ func execute(handler func(response *http.Response)) {
 }
 
 func runServer() {
-	opts := kafkaOpts{}
+	opts := KafkaOpts{}
 	opts.uri = bootstrap_servers
 	opts.uriZookeeper = []string{"localhost:2181"}
 	opts.kafkaVersion = sarama.V1_0_0_0.String()
