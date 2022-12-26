@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/pprof"
@@ -143,11 +142,7 @@ func CanReadCertAndKey(certPath, keyPath string) (bool, error) {
 // readable, returns true otherwise returns false.
 func canReadFile(path string) bool {
 	_, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-
-	return true
+	return err == nil
 }
 
 // NewExporter returns an initialized Exporter.
@@ -217,7 +212,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, groupFilter string) (*Expor
 		}
 
 		if opts.tlsCAFile != "" {
-			if ca, err := ioutil.ReadFile(opts.tlsCAFile); err == nil {
+			if ca, err := os.ReadFile(opts.tlsCAFile); err == nil {
 				config.Net.TLS.Config.RootCAs.AppendCertsFromPEM(ca)
 			} else {
 				return nil, err
