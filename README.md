@@ -240,7 +240,7 @@ Grafana Dashboard
 
 Grafana Dashboard ID: 7589, name: Kafka Exporter Overview.
 
-For details of the dashboard please see [Kafka Exporter Overview](https://grafana.com/dashboards/7589).
+For details of the dashboard please see [Kafka Exporter Overview](https://grafana.com/grafana/dashboards/7589-kafka-exporter-overview/).
 
 Contribute
 ----------
