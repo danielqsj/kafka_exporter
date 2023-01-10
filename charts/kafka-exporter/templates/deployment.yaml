@@ -72,6 +72,9 @@ spec:
             - --tls.key-file=/etc/tls-certs/key-file
             {{- end }}
             {{- end }}
+            {{- if .Values.kafkaExporter.web }}
+            - --web.listen-address={{ .Values.kafkaExporter.web.listenAddress }}
+            {{- end }}           
             {{- if .Values.kafkaExporter.log }}
             - --verbosity={{ .Values.kafkaExporter.log.verbosity }}
             {{- end }}
