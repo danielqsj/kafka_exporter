@@ -1,9 +1,9 @@
-apiVersion: v1
-appVersion: "1.0"
+apiVersion: v2
+appVersion: "v1.4.2"
 description: A Helm chart for Kubernetes
 name: kafka-exporter
-version: 1.2.0
-home: https://github.com/abhishekjiitr/kafka-exporter-helm
+version: 1.2.1
+home: https://github.com/danielqsj/kafka_exporter/tree/master/charts/kafka-exporter
 maintainers:
   - name: abhishekjiitr
     email: abhi2254015@gmail.com

@@ -6,11 +6,35 @@ replicaCount: 1
 
 image:
   repository: danielqsj/kafka-exporter
-  tag: latest
   pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
 
+imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: false
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
 
 service:
   type: ClusterIP
@@ -20,7 +44,8 @@ kafkaExporter:
   kafka:
     servers: []
       # - kafka:9092
-    # version: "1.0.0"
+    version: ""
+    labels: ""
 
   sasl:
     enabled: false
@@ -28,16 +53,46 @@ kafkaExporter:
     username: ""
     password: ""
     mechanism: ""
+    serviceName: ""
+    kerberosConfigPath: ""
+    realm: ""
+    keytabPath: ""
+    kerberosAuthType: ""
 
   tls:
     enabled: false
-    insecureSkipTlsVerify: false
+    serverName: ""
     caFile: ""
     certFile: ""
     keyFile: ""
+    insecureSkipTlsVerify: false
+
+  filter:
+    topic: ""
+    group: ""
+
+  web:
+    listenAddress: ""
+    telemetryPath: ""
+
+  zookeeper:
+    consumelag: false
+    server: ""
+
+  refresh:
+    metadata: ""
+  
+  offset:
+    showAll: true
+
+  concurrent:
+    enable: false
+
+  topic:
+    workers: ""
 
   log:
-    verbosity: 0
+    verbosity: ""
     enableSarama: false
 
 prometheus:
@@ -45,11 +100,13 @@ prometheus:
     enabled: true
     namespace: monitoring
     interval: "30s"
-    additionalLabels:
-      app: kafka-exporter
+    additionalLabels: {}
     metricRelabelings: {}
 
+annotations: {}
+
 labels: {}
+
 podLabels: {}
 
 # Adds in Datadog annotations needed to scrape the prometheus endpoint.
