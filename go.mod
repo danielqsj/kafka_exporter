@@ -40,7 +40,7 @@ require (
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 )
 
-require k8s.io/klog/v2 v2.70.1
+require k8s.io/klog/v2 v2.90.0
 
 require (
 	github.com/go-kit/log v0.1.0 // indirect
