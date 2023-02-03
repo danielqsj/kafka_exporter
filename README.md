@@ -223,6 +223,13 @@ kafka_topic_partition_under_replicated_partition{partition="0",topic="__consumer
 | `kafka_consumergroup_current_offset` | Current Offset of a ConsumerGroup at Topic/Partition          |
 | `kafka_consumergroup_lag`            | Current Approximate Lag of a ConsumerGroup at Topic/Partition |
 
+#### Important Note
+
+To be able to collect these metrics, you must set the following flags:
+
+* ``use.consumelag.zookeeper``: enable collection of zookeeper metrics
+* ``zookeeper.server``: address for connection to zookeeper
+
 **Metrics output example**
 
 ```txt
