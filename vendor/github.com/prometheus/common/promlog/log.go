@@ -17,13 +17,13 @@
 package promlog
 
 import (
+	"fmt"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
 )
 
 var (
@@ -76,7 +76,7 @@ func (l *AllowedLevel) Set(s string) error {
 	case "error":
 		l.o = level.AllowError()
 	default:
-		return errors.Errorf("unrecognized log level %q", s)
+		return fmt.Errorf("unrecognized log level %q", s)
 	}
 	l.s = s
 	return nil
@@ -97,7 +97,7 @@ func (f *AllowedFormat) Set(s string) error {
 	case "logfmt", "json":
 		f.s = s
 	default:
-		return errors.Errorf("unrecognized log format %q", s)
+		return fmt.Errorf("unrecognized log format %q", s)
 	}
 	return nil
 }
