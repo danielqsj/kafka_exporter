@@ -118,6 +118,7 @@ This image is configurable using different flags
 | server.tls.key-file                 |                | The key file for the web server                                                                                        |
 | topic.filter                 | .*             | Regex that determines which topics to collect                                                                                          |
 | group.filter                 | .*             | Regex that determines which consumer groups to collect                                                                                 |
+| group.exclude                | ^$             | Regex that determines which consumer groups to exclude                                                                                 |
 | web.listen-address           | :9308          | Address to listen on for web interface and telemetry                                                                                   |
 | web.telemetry-path           | /metrics       | Path under which to expose metrics                                                                                                     |
 | log.enable-sarama            | false          | Turn on Sarama logging                                                                                                                 |
