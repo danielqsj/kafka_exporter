@@ -117,7 +117,7 @@ This image is configurable using different flags
 | server.tls.cert-file                |                | The certificate file for the web server                                                                                |
 | server.tls.key-file                 |                | The key file for the web server                                                                                        |
 | topic.filter                 | .*             | Regex that determines which topics to collect                                                                                          |
-| topic.exclude                | .*             | Regex that determines which topics to exclude                                                                                          |
+| topic.exclude                | ^$             | Regex that determines which topics to exclude                                                                                          |
 | group.filter                 | .*             | Regex that determines which consumer groups to collect                                                                                 |
 | group.exclude                | ^$             | Regex that determines which consumer groups to exclude                                                                                 |
 | web.listen-address           | :9308          | Address to listen on for web interface and telemetry                                                                                   |
