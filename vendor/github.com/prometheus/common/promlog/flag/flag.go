@@ -14,8 +14,8 @@
 package flag
 
 import (
+	kingpin "github.com/alecthomas/kingpin/v2"
 	"github.com/prometheus/common/promlog"
-	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 // LevelFlagName is the canonical flag name to configure the allowed log level
