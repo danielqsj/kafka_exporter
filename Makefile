@@ -107,7 +107,7 @@ golangci-lint:
 ifeq (, $(shell which golangci-lint))
 	@GOOS=$(shell uname -s | tr A-Z a-z) \
     		GOARCH=$(subst x86_64,amd64,$(patsubst i%86,386,$(shell uname -m))) \
-    		$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.48.0
+    		$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.52.2
 GOLANG_LINT=$(shell go env GOPATH)/bin/golangci-lint
 else
 GOLANG_LINT=$(shell which golangci-lint)
