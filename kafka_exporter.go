@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
+	kingpin "github.com/alecthomas/kingpin/v2"
 	"github.com/krallistic/kazoo-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -24,7 +25,6 @@ import (
 	plogflag "github.com/prometheus/common/promlog/flag"
 	"github.com/prometheus/common/version"
 	"github.com/rcrowley/go-metrics"
-	"gopkg.in/alecthomas/kingpin.v2"
 	"k8s.io/klog/v2"
 )
 
