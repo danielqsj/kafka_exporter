@@ -17,13 +17,13 @@
 package promlog
 
 import (
+	"fmt"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
 )
 
 var (
@@ -76,7 +76,7 @@ func (l *AllowedLevel) Set(s string) error {
 	case "error":
 		l.o = level.AllowError()
 	default:
-		return errors.Errorf("unrecognized log level %q", s)
+		return fmt.Errorf("unrecognized log level %q", s)
 	}
 	l.s = s
 	return nil
@@ -97,7 +97,7 @@ func (f *AllowedFormat) Set(s string) error {
 	case "logfmt", "json":
 		f.s = s
 	default:
-		return errors.Errorf("unrecognized log format %q", s)
+		return fmt.Errorf("unrecognized log format %q", s)
 	}
 	return nil
 }
@@ -111,13 +111,16 @@ type Config struct {
 // New returns a new leveled oklog logger. Each logged line will be annotated
 // with a timestamp. The output always goes to stderr.
 func New(config *Config) log.Logger {
-	var l log.Logger
 	if config.Format != nil && config.Format.s == "json" {
-		l = log.NewJSONLogger(log.NewSyncWriter(os.Stderr))
-	} else {
-		l = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+		return NewWithLogger(log.NewJSONLogger(log.NewSyncWriter(os.Stderr)), config)
 	}
 
+	return NewWithLogger(log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr)), config)
+}
+
+// NewWithLogger returns a new leveled oklog logger with a custom log.Logger.
+// Each logged line will be annotated with a timestamp.
+func NewWithLogger(l log.Logger, config *Config) log.Logger {
 	if config.Level != nil {
 		l = log.With(l, "ts", timestampFormat, "caller", log.Caller(5))
 		l = level.NewFilter(l, config.Level.o)
@@ -131,13 +134,17 @@ func New(config *Config) log.Logger {
 // with a timestamp. The output always goes to stderr. Some properties can be
 // changed, like the level.
 func NewDynamic(config *Config) *logger {
-	var l log.Logger
 	if config.Format != nil && config.Format.s == "json" {
-		l = log.NewJSONLogger(log.NewSyncWriter(os.Stderr))
-	} else {
-		l = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+		return NewDynamicWithLogger(log.NewJSONLogger(log.NewSyncWriter(os.Stderr)), config)
 	}
 
+	return NewDynamicWithLogger(log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr)), config)
+}
+
+// NewDynamicWithLogger returns a new leveled logger with a custom io.Writer.
+// Each logged line will be annotated with a timestamp.
+// Some properties can be changed, like the level.
+func NewDynamicWithLogger(l log.Logger, config *Config) *logger {
 	lo := &logger{
 		base:    l,
 		leveled: l,
