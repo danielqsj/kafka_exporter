@@ -39,7 +39,7 @@ require (
 	google.golang.org/protobuf v1.30.0 // indirect
 )
 
-require k8s.io/klog/v2 v2.90.1
+require k8s.io/klog/v2 v2.100.1
 
 require (
 	github.com/go-kit/log v0.2.1 // indirect
