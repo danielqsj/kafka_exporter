@@ -19,6 +19,7 @@ Table of Contents
 -	[Run](#run)
 	-	[Run Binary](#run-binary)
 	-	[Run Docker Image](#run-docker-image)
+ -	-	[Run Docker Compose](#run-docker-compose)
 -	[Flags](#flags)
     -	[Notes](#notes)
 -	[Metrics](#metrics)
@@ -84,6 +85,17 @@ kafka_exporter --kafka.server=kafka:9092 [--kafka.server=another-server ...]
 
 ```
 docker run -ti --rm -p 9308:9308 danielqsj/kafka-exporter --kafka.server=kafka:9092 [--kafka.server=another-server ...]
+```
+
+### Run Docker Compose
+
+```
+services:
+  kafka-exporter:
+    image: danielqsj/kafka-exporter 
+    command: ["--kafka.server=kafka:9092", "[--kafka.server=another-server ...]"]
+    ports:
+      - 9308:9308     
 ```
 
 Flags
