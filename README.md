@@ -88,7 +88,7 @@ docker run -ti --rm -p 9308:9308 danielqsj/kafka-exporter --kafka.server=kafka:9
 ```
 
 ### Run Docker Compose
-
+make a `docker-compose.yml` flie
 ```
 services:
   kafka-exporter:
@@ -96,6 +96,10 @@ services:
     command: ["--kafka.server=kafka:9092", "[--kafka.server=another-server ...]"]
     ports:
       - 9308:9308     
+```
+then run it
+```
+docker-compose up -d
 ```
 
 Flags
