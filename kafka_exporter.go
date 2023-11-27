@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"flag"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/Shopify/sarama"
 	kingpin "github.com/alecthomas/kingpin/v2"
+	"github.com/aws/aws-msk-iam-sasl-signer-go/signer"
 	"github.com/krallistic/kazoo-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -88,6 +90,7 @@ type kafkaOpts struct {
 	saslPassword             string
 	saslMechanism            string
 	saslDisablePAFXFast      bool
+	saslAwsRegion            string
 	useTLS                   bool
 	tlsServerName            string
 	tlsCAFile                string
@@ -114,6 +117,15 @@ type kafkaOpts struct {
 	allowConcurrent          bool
 	allowAutoTopicCreation   bool
 	verbosityLogLevel        int
+}
+
+type MSKAccessTokenProvider struct {
+	region string
+}
+
+func (m *MSKAccessTokenProvider) Token() (*sarama.AccessToken, error) {
+	token, _, err := signer.GenerateAuthToken(context.TODO(), m.region)
+	return &sarama.AccessToken{Token: token}, err
 }
 
 // CanReadCertAndKey returns true if the certificate and key files already exists,
@@ -187,10 +199,13 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 			if opts.saslDisablePAFXFast {
 				config.Net.SASL.GSSAPI.DisablePAFXFAST = true
 			}
+		case "awsiam":
+			config.Net.SASL.Mechanism = sarama.SASLMechanism(sarama.SASLTypeOAuth)
+			config.Net.SASL.TokenProvider = &MSKAccessTokenProvider{region: opts.saslAwsRegion}
 		case "plain":
 		default:
 			return nil, fmt.Errorf(
-				`invalid sasl mechanism "%s": can only be "scram-sha256", "scram-sha512", "gssapi" or "plain"`,
+				`invalid sasl mechanism "%s": can only be "scram-sha256", "scram-sha512", "gssapi", "awsiam" or "plain"`,
 				opts.saslMechanism,
 			)
 		}
@@ -726,7 +741,8 @@ func main() {
 	toFlagBoolVar("sasl.handshake", "Only set this to false if using a non-Kafka SASL proxy, default is true.", true, "true", &opts.useSASLHandshake)
 	toFlagStringVar("sasl.username", "SASL user name.", "", &opts.saslUsername)
 	toFlagStringVar("sasl.password", "SASL user password.", "", &opts.saslPassword)
-	toFlagStringVar("sasl.mechanism", "The SASL SCRAM SHA algorithm sha256 or sha512 or gssapi as mechanism", "", &opts.saslMechanism)
+	toFlagStringVar("sasl.aws-region", "The AWS region for IAM SASL authentication", os.Getenv("AWS_REGION"), &opts.saslAwsRegion)
+	toFlagStringVar("sasl.mechanism", "The SASL mechanism: gssapi, awsiam or plain or SASL SCRAM SHA algorithm: sha256 or sha512", "", &opts.saslMechanism)
 	toFlagStringVar("sasl.service-name", "Service name when using kerberos Auth", "", &opts.serviceName)
 	toFlagStringVar("sasl.kerberos-config-path", "Kerberos config path", "", &opts.kerberosConfigPath)
 	toFlagStringVar("sasl.realm", "Kerberos realm", "", &opts.realm)
