@@ -56,12 +56,14 @@ var (
 	consumergroupLagSum                *prometheus.Desc
 	consumergroupLagZookeeper          *prometheus.Desc
 	consumergroupMembers               *prometheus.Desc
+	describeConfigTopic                *prometheus.Desc
 )
 
 // Exporter collects Kafka stats from the given server and exports them using
 // the prometheus metrics package.
 type Exporter struct {
 	client                  sarama.Client
+	adminClient             sarama.ClusterAdmin
 	topicFilter             *regexp.Regexp
 	topicExclude            *regexp.Regexp
 	groupFilter             *regexp.Regexp
@@ -114,6 +116,14 @@ type kafkaOpts struct {
 	allowConcurrent          bool
 	allowAutoTopicCreation   bool
 	verbosityLogLevel        int
+}
+
+type TopicConfig struct {
+	CleanupPolicy   string
+	RetentionMs     string
+	MaxMessageBytes string
+	SegmentBytes    string
+	RetentionBytes  string
 }
 
 // CanReadCertAndKey returns true if the certificate and key files already exists,
@@ -261,10 +271,17 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 		return nil, errors.Wrap(err, "Error Init Kafka Client")
 	}
 
+	adminClient, err := sarama.NewClusterAdminFromClient(client)
+
+	if err != nil {
+		return nil, errors.Wrap(err, "Error Init Admin Kafka Client")
+	}
+
 	klog.V(TRACE).Infoln("Done Init Clients")
 	// Init our exporter.
 	return &Exporter{
 		client:                  client,
+		adminClient:             adminClient,
 		topicFilter:             regexp.MustCompile(topicFilter),
 		topicExclude:            regexp.MustCompile(topicExclude),
 		groupFilter:             regexp.MustCompile(groupFilter),
@@ -312,6 +329,7 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- consumergroupLag
 	ch <- consumergroupLagZookeeper
 	ch <- consumergroupLagSum
+	ch <- describeConfigTopic
 }
 
 // Collect fetches the stats from configured Kafka location and delivers them
@@ -394,6 +412,42 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 		klog.Errorf("Cannot get topics: %v", err)
 		return
 	}
+
+	// Get config for all topics
+
+	for _, topic := range topics {
+		resource := sarama.ConfigResource{
+			Type: sarama.TopicResource,
+			Name: topic,
+		}
+		entries, err := e.adminClient.DescribeConfig(resource)
+		if err != nil {
+			log.Printf("Failed to describe config for topic %s: %v", topic, err)
+			continue
+		}
+
+		topicConfig := &TopicConfig{}
+
+		for _, entry := range entries {
+			switch entry.Name {
+			case "cleanup.policy":
+				topicConfig.CleanupPolicy = entry.Value
+			case "retention.ms":
+				topicConfig.RetentionMs = entry.Value
+			case "max.message.bytes":
+				topicConfig.MaxMessageBytes = entry.Value
+			case "segment.bytes":
+				topicConfig.SegmentBytes = entry.Value
+			case "retention.bytes":
+				topicConfig.RetentionBytes = entry.Value
+			}
+		}
+
+		ch <- prometheus.MustNewConstMetric(
+			describeConfigTopic, prometheus.GaugeValue, 1, topic, topicConfig.CleanupPolicy, topicConfig.RetentionMs, topicConfig.MaxMessageBytes, topicConfig.SegmentBytes, topicConfig.RetentionBytes,
+		)
+	}
+
 
 	topicChannel := make(chan string)
 
@@ -890,6 +944,12 @@ func setup(
 		prometheus.BuildFQName(namespace, "consumergroup", "members"),
 		"Amount of members in a consumer group",
 		[]string{"consumergroup"}, labels,
+	)
+
+	describeConfigTopic = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "topic", "config"),
+		"Topic Configuration",
+		[]string{"topic", "cleanup_policy", "retention_ms", "max_message_bytes", "segment_bytes", "retention_bytes"}, labels,
 	)
 
 	if logSarama {
