@@ -569,10 +569,6 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			return
 		}
 		for _, group := range describeGroups.Groups {
-			if group.ProtocolType != "consumer" {
-				klog.Warningf("Group '%v' is using a protocol type other than 'consumer'. It may not be compatible with functions relying on consumer group protocols.", group.GroupId)
-				continue
-			}
 			offsetFetchRequest := sarama.OffsetFetchRequest{ConsumerGroup: group.GroupId, Version: 1}
 			if e.offsetShowAll {
 				for topic, partitions := range offset {
@@ -585,7 +581,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 					assignment, err := member.GetMemberAssignment()
 					if err != nil {
 						klog.Errorf("Cannot get GetMemberAssignment of group member %v : %v", member, err)
-						return
+						continue
 					}
 					for topic, partions := range assignment.Topics {
 						for _, partition := range partions {
