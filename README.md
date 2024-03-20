@@ -115,7 +115,8 @@ This image is configurable using different flags
 | sasl.handshake                 | true           | Only set this to false if using a non-Kafka SASL proxy                                                                                         |
 | sasl.username                  |                | SASL user name                                                                                                                                 |
 | sasl.password                  |                | SASL user password                                                                                                                             |
-| sasl.mechanism                 |                | SASL mechanism can be plain, scram-sha512, scram-sha256                                                                                        |
+| sasl.mechanism                 |                | The SASL mechanism: gssapi, awsiam or plain or SASL SCRAM SHA algorithm: sha256 or sha512                                                      |
+| sasl.aws-region                | AWS_REGION env | The AWS region for IAM SASL authentication                                                                                                     |
 | sasl.service-name              |                | Service name when using Kerberos Auth                                                                                                          |
 | sasl.kerberos-config-path      |                | Kerberos config path                                                                                                                           |
 | sasl.realm                     |                | Kerberos realm                                                                                                                                 |
