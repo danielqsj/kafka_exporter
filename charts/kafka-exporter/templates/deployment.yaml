@@ -18,8 +18,12 @@ spec:
       app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
-      {{- if eq .Values.datadog.use_datadog true }}
+      {{- if or (eq .Values.datadog.use_datadog true) (.Values.podAnnotations) }}
       annotations:
+        {{- if .Values.podAnnotations }}
+        {{- .Values.podAnnotations | toYaml | nindent 8 }}
+        {{- end }}
+        {{- if eq .Values.datadog.use_datadog true }}
         ad.datadoghq.com/{{ .Chart.Name }}.check_names: |
           ["openmetrics"]
         ad.datadoghq.com/{{ .Chart.Name }}.init_configs: |
@@ -32,6 +36,7 @@ spec:
               "metrics": {{ .Values.datadog.metrics | toJson | nindent 16 -}}
             }
            ]
+        {{- end }}
       {{- end }}    
       labels:
         app.kubernetes.io/name: {{ include "kafka-exporter.name" . }}
