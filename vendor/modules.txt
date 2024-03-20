@@ -7,9 +7,25 @@ github.com/alecthomas/kingpin/v2
 # github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137
 ## explicit; go 1.15
 github.com/alecthomas/units
+# github.com/aliyun/alibaba-cloud-sdk-go v1.61.18
+## explicit; go 1.13
+github.com/aliyun/alibaba-cloud-sdk-go/sdk
+github.com/aliyun/alibaba-cloud-sdk-go/sdk/auth
+github.com/aliyun/alibaba-cloud-sdk-go/sdk/auth/credentials
+github.com/aliyun/alibaba-cloud-sdk-go/sdk/auth/credentials/provider
+github.com/aliyun/alibaba-cloud-sdk-go/sdk/auth/signers
+github.com/aliyun/alibaba-cloud-sdk-go/sdk/endpoints
+github.com/aliyun/alibaba-cloud-sdk-go/sdk/errors
+github.com/aliyun/alibaba-cloud-sdk-go/sdk/requests
+github.com/aliyun/alibaba-cloud-sdk-go/sdk/responses
+github.com/aliyun/alibaba-cloud-sdk-go/sdk/utils
+github.com/aliyun/alibaba-cloud-sdk-go/services/kms
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
+# github.com/buger/jsonparser v1.1.1
+## explicit; go 1.13
+github.com/buger/jsonparser
 # github.com/cespare/xxhash/v2 v2.2.0
 ## explicit; go 1.11
 github.com/cespare/xxhash/v2
@@ -25,6 +41,9 @@ github.com/eapache/go-xerial-snappy
 # github.com/eapache/queue v1.1.0
 ## explicit
 github.com/eapache/queue
+# github.com/go-errors/errors v1.0.1
+## explicit
+github.com/go-errors/errors
 # github.com/go-kit/log v0.2.1
 ## explicit; go 1.17
 github.com/go-kit/log
@@ -96,6 +115,12 @@ github.com/jcmturner/gokrb5/v8/types
 ## explicit; go 1.13
 github.com/jcmturner/rpc/v2/mstypes
 github.com/jcmturner/rpc/v2/ndr
+# github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af
+## explicit
+github.com/jmespath/go-jmespath
+# github.com/json-iterator/go v1.1.12
+## explicit; go 1.12
+github.com/json-iterator/go
 # github.com/klauspost/compress v1.15.14
 ## explicit; go 1.17
 github.com/klauspost/compress
@@ -111,6 +136,30 @@ github.com/krallistic/kazoo-go
 # github.com/matttproud/golang_protobuf_extensions v1.0.4
 ## explicit; go 1.9
 github.com/matttproud/golang_protobuf_extensions/pbutil
+# github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
+## explicit
+github.com/modern-go/concurrent
+# github.com/modern-go/reflect2 v1.0.2
+## explicit; go 1.12
+github.com/modern-go/reflect2
+# github.com/nacos-group/nacos-sdk-go v1.1.1
+## explicit; go 1.12
+github.com/nacos-group/nacos-sdk-go/clients
+github.com/nacos-group/nacos-sdk-go/clients/cache
+github.com/nacos-group/nacos-sdk-go/clients/config_client
+github.com/nacos-group/nacos-sdk-go/clients/nacos_client
+github.com/nacos-group/nacos-sdk-go/clients/naming_client
+github.com/nacos-group/nacos-sdk-go/common/constant
+github.com/nacos-group/nacos-sdk-go/common/file
+github.com/nacos-group/nacos-sdk-go/common/http_agent
+github.com/nacos-group/nacos-sdk-go/common/logger
+github.com/nacos-group/nacos-sdk-go/common/nacos_error
+github.com/nacos-group/nacos-sdk-go/common/nacos_server
+github.com/nacos-group/nacos-sdk-go/common/security
+github.com/nacos-group/nacos-sdk-go/inner/uuid
+github.com/nacos-group/nacos-sdk-go/model
+github.com/nacos-group/nacos-sdk-go/util
+github.com/nacos-group/nacos-sdk-go/vo
 # github.com/pierrec/lz4/v4 v4.1.17
 ## explicit; go 1.14
 github.com/pierrec/lz4/v4
@@ -157,6 +206,20 @@ github.com/xdg/stringprep
 # github.com/xhit/go-str2duration/v2 v2.1.0
 ## explicit; go 1.13
 github.com/xhit/go-str2duration/v2
+# go.uber.org/atomic v1.6.0
+## explicit; go 1.13
+go.uber.org/atomic
+# go.uber.org/multierr v1.5.0
+## explicit; go 1.12
+go.uber.org/multierr
+# go.uber.org/zap v1.15.0
+## explicit; go 1.13
+go.uber.org/zap
+go.uber.org/zap/buffer
+go.uber.org/zap/internal/bufferpool
+go.uber.org/zap/internal/color
+go.uber.org/zap/internal/exit
+go.uber.org/zap/zapcore
 # golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa
 ## explicit; go 1.17
 golang.org/x/crypto/md4
@@ -166,6 +229,9 @@ golang.org/x/crypto/pbkdf2
 golang.org/x/net/http2/hpack
 golang.org/x/net/internal/socks
 golang.org/x/net/proxy
+# golang.org/x/sync v0.1.0
+## explicit
+golang.org/x/sync/semaphore
 # golang.org/x/sys v0.8.0
 ## explicit; go 1.17
 golang.org/x/sys/internal/unsafeheader
@@ -205,6 +271,12 @@ google.golang.org/protobuf/runtime/protoiface
 google.golang.org/protobuf/runtime/protoimpl
 google.golang.org/protobuf/types/descriptorpb
 google.golang.org/protobuf/types/known/timestamppb
+# gopkg.in/ini.v1 v1.42.0
+## explicit
+gopkg.in/ini.v1
+# gopkg.in/natefinch/lumberjack.v2 v2.0.0
+## explicit
+gopkg.in/natefinch/lumberjack.v2
 # k8s.io/klog/v2 v2.100.1
 ## explicit; go 1.13
 k8s.io/klog/v2

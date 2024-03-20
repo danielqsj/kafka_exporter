@@ -147,6 +147,10 @@ This image is configurable using different flags
 | concurrent.enable              | false          | If true, all scrapes will trigger kafka operations otherwise, they will share results. WARN: This should be disabled on large clusters         |
 | topic.workers                  | 100            | Number of topic workers                                                                                                                        |
 | verbosity                      | 0              | Verbosity log level                                                                                                                            |
+| nacos.addr                     |                | nacos server address                                                                                                                           |
+| nacos.port                     | 8848           | nacos server port                                                                                                                              |
+| nacos.namesapce-id             | public         | nacos namespace id                                                                                                                             |
+| nacos.service-name             |                | service name that register to nacos                                                                                                            |
 
 ### Notes
 
