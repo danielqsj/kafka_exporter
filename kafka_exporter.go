@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	kingpin "github.com/alecthomas/kingpin/v2"
+	"github.com/alecthomas/kingpin/v2"
 	"github.com/krallistic/kazoo-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -342,13 +342,16 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 func (e *Exporter) collectChans(quit chan struct{}) {
 	original := make(chan prometheus.Metric)
 	container := make([]prometheus.Metric, 0, 100)
+	done := make(chan struct{})
 	go func() {
 		for metric := range original {
 			container = append(container, metric)
 		}
+		close(done)
 	}()
 	e.collect(original)
 	close(original)
+	<-done
 	// Lock to avoid modification on the channel slice
 	e.sgMutex.Lock()
 	for _, ch := range e.sgChans {
