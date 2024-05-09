@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -216,7 +215,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 		}
 
 		if opts.tlsCAFile != "" {
-			if ca, err := ioutil.ReadFile(opts.tlsCAFile); err == nil {
+			if ca, err := os.ReadFile(opts.tlsCAFile); err == nil {
 				config.Net.TLS.Config.RootCAs = x509.NewCertPool()
 				config.Net.TLS.Config.RootCAs.AppendCertsFromPEM(ca)
 			} else {
@@ -939,7 +938,7 @@ func setup(
 
 		certPool := x509.NewCertPool()
 		if opts.serverTlsCAFile != "" {
-			if caCert, err := ioutil.ReadFile(opts.serverTlsCAFile); err == nil {
+			if caCert, err := os.ReadFile(opts.serverTlsCAFile); err == nil {
 				certPool.AppendCertsFromPEM(caCert)
 			} else {
 				klog.Error("error reading server ca")

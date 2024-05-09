@@ -2,7 +2,7 @@ package main
 
 import (
 	"errors"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"testing"
@@ -27,7 +27,7 @@ func TestSmoke(t *testing.T) {
 		log.Println(resp.Status)
 
 		defer resp.Body.Close()
-		bytes, err := ioutil.ReadAll(resp.Body)
+		bytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			log.Fatalln(err)
 		} else {
