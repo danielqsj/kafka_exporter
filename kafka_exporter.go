@@ -602,7 +602,15 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 
 			uniqueTopics := make(map[string]int)
 			for _, member := range group.Members {
-				meta, _ := member.GetMemberMetadata()
+				meta, err := member.GetMemberMetadata()
+				if err != nil {
+					klog.Errorf("Cannot get metadata for member %s: %v", member.MemberId, err)
+					continue
+				}
+				if meta == nil {
+					klog.Warningf("No metadata for member %s", member.MemberId)
+					continue
+				}
 				for _, topic := range meta.Topics {
 					uniqueTopics[topic]++
 				}
