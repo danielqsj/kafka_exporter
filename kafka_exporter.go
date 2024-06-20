@@ -17,7 +17,11 @@ import (
 
 	"github.com/Shopify/sarama"
 	kingpin "github.com/alecthomas/kingpin/v2"
+	"github.com/danielqsj/kafka_exporter/util"
 	"github.com/krallistic/kazoo-go"
+	"github.com/nacos-group/nacos-sdk-go/clients"
+	"github.com/nacos-group/nacos-sdk-go/common/constant"
+	"github.com/nacos-group/nacos-sdk-go/vo"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -114,6 +118,13 @@ type kafkaOpts struct {
 	allowConcurrent          bool
 	allowAutoTopicCreation   bool
 	verbosityLogLevel        int
+}
+
+type NacosOpts struct {
+	addr        string
+	port        int
+	namesapceId string
+	serviceName string
 }
 
 // CanReadCertAndKey returns true if the certificate and key files already exists,
@@ -376,6 +387,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	}
 
 	offset := make(map[string]map[int32]int64)
+	tpOldestOffset := make(map[string]map[int32]int64)
 
 	now := time.Now()
 
@@ -414,6 +426,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 		)
 		e.mu.Lock()
 		offset[topic] = make(map[int32]int64, len(partitions))
+		tpOldestOffset[topic] = make(map[int32]int64, len(partitions))
 		e.mu.Unlock()
 		for _, partition := range partitions {
 			broker, err := e.client.Leader(topic, partition)
@@ -441,6 +454,9 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			if err != nil {
 				klog.Errorf("Cannot get oldest offset of topic %s partition %d: %v", topic, partition, err)
 			} else {
+				e.mu.Lock()
+				tpOldestOffset[topic][partition] = oldestOffset
+				e.mu.Unlock()
 				ch <- prometheus.MustNewConstMetric(
 					topicOldestOffset, prometheus.GaugeValue, float64(oldestOffset), topic, strconv.FormatInt(int64(partition), 10),
 				)
@@ -638,8 +654,18 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 						if offsetFetchResponseBlock.Offset == -1 {
 							lag = -1
 						} else {
-							lag = offset - offsetFetchResponseBlock.Offset
-							lagSum += lag
+							if oldestOffset, ok2 := tpOldestOffset[topic][partition]; ok2 {
+								if offsetFetchResponseBlock.Offset >= oldestOffset {
+									lag = offset - offsetFetchResponseBlock.Offset
+									lagSum += lag
+								} else {
+									// If current offset < oldestOffset, forcing lag to -1
+									lag = -1
+								}
+							} else {
+								lag = offset - offsetFetchResponseBlock.Offset
+								lagSum += lag
+							}
 						}
 						ch <- prometheus.MustNewConstMetric(
 							consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
@@ -723,6 +749,8 @@ func main() {
 		logSarama     = toFlagBool("log.enable-sarama", "Turn on Sarama logging, default is false.", false, "false")
 
 		opts = kafkaOpts{}
+
+		nacosOpts = NacosOpts{}
 	)
 
 	toFlagStringsVar("kafka.server", "Address (host:port) of Kafka server.", "kafka:9092", &opts.uri)
@@ -759,6 +787,12 @@ func main() {
 	toFlagBoolVar("kafka.allow-auto-topic-creation", "If true, the broker may auto-create topics that we requested which do not already exist, default is false.", false, "false", &opts.allowAutoTopicCreation)
 	toFlagIntVar("verbosity", "Verbosity log level", 0, "0", &opts.verbosityLogLevel)
 
+	// nacos opts
+	toFlagStringVar("nacos.addr", "nacos server address", "", &nacosOpts.addr)
+	toFlagIntVar("nacos.port", "nacos server port", 8848, "8848", &nacosOpts.port)
+	toFlagStringVar("nacos.namesapce-id", "nacos server namesapce id", "", &nacosOpts.namesapceId)
+	toFlagStringVar("nacos.service-name", "service name to register nacos", "", &nacosOpts.serviceName)
+
 	plConfig := plog.Config{}
 	plogflag.AddFlags(kingpin.CommandLine, &plConfig)
 	kingpin.Version(version.Print("kafka_exporter"))
@@ -777,7 +811,7 @@ func main() {
 		}
 	}
 
-	setup(*listenAddress, *metricsPath, *topicFilter, *topicExclude, *groupFilter, *groupExclude, *logSarama, opts, labels)
+	setup(*listenAddress, *metricsPath, *topicFilter, *topicExclude, *groupFilter, *groupExclude, *logSarama, opts, nacosOpts, labels)
 }
 
 func setup(
@@ -789,6 +823,7 @@ func setup(
 	groupExclude string,
 	logSarama bool,
 	opts kafkaOpts,
+	nacosOpts NacosOpts,
 	labels map[string]string,
 ) {
 	klog.InitFlags(flag.CommandLine)
@@ -900,6 +935,11 @@ func setup(
 		sarama.Logger = log.New(os.Stdout, "[sarama] ", log.LstdFlags)
 	}
 
+	err = RegisterInstance(nacosOpts)
+	if err != nil {
+		klog.Error(err)
+	}
+
 	exporter, err := NewExporter(opts, topicFilter, topicExclude, groupFilter, groupExclude)
 	if err != nil {
 		klog.Fatalln(err)
@@ -975,4 +1015,62 @@ func setup(
 		klog.V(INFO).Infoln("Listening on HTTP", listenAddress)
 		klog.Fatal(http.ListenAndServe(listenAddress, nil))
 	}
+}
+
+func RegisterInstance(opts NacosOpts) error {
+	// 注册服务
+	if opts.addr == "" || opts.port == 0 || opts.serviceName == "" {
+		klog.V(INFO).Infof("service discovery config is empty, ignore")
+		return nil
+	}
+
+	serverIp := opts.addr
+	serverPort := opts.port
+	serviceName := opts.serviceName
+	serviceNs := opts.namesapceId
+
+	sc := []constant.ServerConfig{
+		*constant.NewServerConfig(serverIp, uint64(serverPort)),
+	}
+
+	cc := *constant.NewClientConfig(
+		constant.WithNamespaceId(serviceNs),
+		constant.WithTimeoutMs(10000),
+		constant.WithBeatInterval(5000),
+		constant.WithNotLoadCacheAtStart(true),
+		constant.WithLogDir("./logs/nacos/log"),
+		constant.WithCacheDir("/tmp/nacos/cache"),
+		constant.WithLogLevel("warn"), // debug,info,warn,error
+		constant.WithLogRollingConfig(&constant.ClientLogRollingConfig{MaxSize: 1}),
+	)
+	// a more graceful way to create naming client
+	client, err := clients.NewNamingClient(
+		vo.NacosClientParam{
+			ClientConfig:  &cc,
+			ServerConfigs: sc,
+		},
+	)
+	if err != nil {
+		return err
+
+	}
+	pv4, err := util.GetLocalIPv4()
+	if err != nil {
+		return err
+	}
+	success, err := client.RegisterInstance(vo.RegisterInstanceParam{
+		Ip:          pv4.To4().String(),
+		Port:        9308,
+		ServiceName: serviceName,
+		Weight:      10,
+		Enable:      true,
+		Healthy:     true,
+		Ephemeral:   true,
+		//Metadata:    map[string]string{"idc": "shanghai"},
+	})
+	if err != nil {
+		return err
+	}
+	klog.V(INFO).Infof("service discovery resp: %v, register %v@%v on ns %v to %v:%v", success, serviceName, pv4.To4().String(), serviceNs, serverIp, serverPort)
+	return nil
 }
