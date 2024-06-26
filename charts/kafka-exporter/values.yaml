@@ -80,8 +80,25 @@ resources: {}
   #   cpu: 100m
   #   memory: 128Mi
 
+podSecurityContext: {}
+# fsGroup: 1001
+
+securityContext: {}
+#  runAsUser: 1001
+#  runAsGroup: 1001
+#  runAsNonRoot: true
+#  allowPrivilegeEscalation: false
+#  readOnlyRootFilesystem: true
+#  capabilities:
+#    drop: ["ALL"]
+
 nodeSelector: {}
 
 tolerations: []
 
 affinity: {}
+
+networkPolicy:
+  enabled: false
+  ingress: {}
+  egress: {}

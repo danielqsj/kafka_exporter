@@ -1,0 +1,18 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "kafka-exporter.fullname" . }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "kafka-exporter.name" . }}
+  {{- if .Values.networkPolicy.ingress }}
+  ingress:
+    {{- .Values.networkPolicy.ingress | toYaml | nindent 4 }}
+  {{- end }}
+  {{- if .Values.networkPolicy.ingress }}
+  egress:
+    {{- .Values.networkPolicy.egress | toYaml | nindent 4 }}
+  {{- end }}
+{{- end }}
