@@ -1,23 +1,37 @@
----
 name: Build
+
 on:
   push:
-    branches:
-      - 'master'
+    branches: [trunk]
+  pull_request:
+    branches: [trunk]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+  security-events: write
+  issues: read
+  checks: write
+  pull-requests: write
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  analyze:
+    name: Analyze
+    runs-on: elvia-runner
+    if: github.ref != 'refs/heads/trunk' # only run analyze on PR
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-      - name: Set up Go
-        uses: actions/setup-go@v4
+      - uses: 3lvia/core-github-actions-templates/analyze@trunk
+
+  build:
+    name: Build and Scan
+    runs-on: elvia-runner
+    environment: build
+    steps:
+      - uses: 3lvia/core-github-actions-templates/build@trunk
         with:
-          go-version: 1.20.4
-      - name: Build Docker Image
-        run: make push
-        env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-          GIT_TAG_NAME: latest
+          name: github-metrics
+          namespace: core
+          dockerfile: Dockerfile
+          AZURE_CLIENT_ID: ${{ vars.ACR_CLIENT_ID }}
