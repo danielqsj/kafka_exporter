@@ -15,7 +15,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: 1.20.4
+          go-version: '1.21'
       - uses: olegtarasov/get-tag@v2.1
         id: tagName
       - name: Release Docker Image
