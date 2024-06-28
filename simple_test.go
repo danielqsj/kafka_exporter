@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 )
 
 var bootstrap_servers = []string{"localhost:9092"}

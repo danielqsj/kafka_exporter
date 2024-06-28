@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	kingpin "github.com/alecthomas/kingpin/v2"
 	"github.com/krallistic/kazoo-go"
 	"github.com/pkg/errors"
