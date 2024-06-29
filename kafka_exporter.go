@@ -585,7 +585,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 					assignment, err := member.GetMemberAssignment()
 					if err != nil {
 						klog.Errorf("Cannot get GetMemberAssignment of group member %v : %v", member, err)
-						return
+						continue
 					}
 					for topic, partions := range assignment.Topics {
 						for _, partition := range partions {
