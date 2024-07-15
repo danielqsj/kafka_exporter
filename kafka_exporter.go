@@ -661,9 +661,23 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 
 	klog.V(DEBUG).Info("Fetching consumer group metrics")
 	if len(e.client.Brokers()) > 0 {
+		uniqueBrokerAddresses := make(map[string]bool)
+		var servers []string
 		for _, broker := range e.client.Brokers() {
-			wg.Add(1)
-			go getConsumerGroupMetrics(broker)
+			normalizedAddress := strings.ToLower(broker.Addr())
+			if !uniqueBrokerAddresses[normalizedAddress] {
+				uniqueBrokerAddresses[normalizedAddress] = true
+				servers = append(servers, broker.Addr())
+			}
+		}
+		klog.Info(servers)
+		for _, broker := range e.client.Brokers() {
+			for _, server := range servers {
+				if server == broker.Addr() {
+					wg.Add(1)
+					go getConsumerGroupMetrics(broker)
+				}
+			}
 		}
 		wg.Wait()
 	} else {
