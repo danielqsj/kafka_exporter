@@ -1,6 +1,14 @@
 GO    := GO111MODULE=on go
 PROMU := $(GOPATH)/bin/promu
 pkgs   = $(shell $(GO) list ./... | grep -v /vendor/)
+UNAME_S := $(shell uname -s | tr A-Z a-z)
+UNAME_M := $(shell uname -m)
+
+ifeq ($(findstring aarch64,$(UNAME_M)),aarch64)
+    ARCH := arm64
+else
+    ARCH := $(subst x86_64,amd64,$(patsubst i%86,386,$(UNAME_M)))
+endif
 
 PREFIX                  ?= $(shell pwd)
 BIN_DIR                 ?= $(shell pwd)
@@ -62,9 +70,7 @@ release: promu github-release
 	@$(PROMU) release .tarballs
 
 promu:
-	@GOOS=$(shell uname -s | tr A-Z a-z) \
-		GOARCH=$(subst x86_64,amd64,$(patsubst i%86,386,$(shell uname -m))) \
-		$(GO) install github.com/prometheus/promu@v0.14.0
+	@GOOS=$(UNAME_S) GOARCH=$(ARCH) $(GO) install github.com/prometheus/promu@v0.14.0
 PROMU=$(shell go env GOPATH)/bin/promu
 
 github-release:
