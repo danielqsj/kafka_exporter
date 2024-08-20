@@ -583,6 +583,10 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 				}
 			} else {
 				for _, member := range group.Members {
+					if len(member.MemberAssignment) == 0 {
+						klog.Warningf("MemberAssignment is empty for group member: %v in group: %v", member.MemberId, group.GroupId)
+						continue
+					}
 					assignment, err := member.GetMemberAssignment()
 					if err != nil {
 						klog.Errorf("Cannot get GetMemberAssignment of group member %v : %v", member, err)
