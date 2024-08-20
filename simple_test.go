@@ -2,13 +2,13 @@ package main
 
 import (
 	"errors"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"testing"
 	"time"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 )
 
 var bootstrap_servers = []string{"localhost:9092"}
@@ -27,7 +27,7 @@ func TestSmoke(t *testing.T) {
 		log.Println(resp.Status)
 
 		defer resp.Body.Close()
-		bytes, err := ioutil.ReadAll(resp.Body)
+		bytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			log.Fatalln(err)
 		} else {
@@ -43,10 +43,7 @@ func assumeKafka() bool {
 	}
 	defer client.Close()
 	_, err = client.Topics()
-	if err != nil {
-		return false
-	}
-	return true
+	return err == nil
 }
 
 func execute(handler func(response *http.Response)) {
