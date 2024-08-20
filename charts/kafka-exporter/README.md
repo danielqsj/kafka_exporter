@@ -31,3 +31,9 @@ helm upgrade -i datadog datadog/datadog --namespace=kafka-exporter \
 ```
 
 
+### Install with Azure Managed Prometheus support
+
+```shell
+helm upgrade -i kafka-exporter kafka_exporter/charts/kafka-exporter --namespace=kafka-exporter --create-namespace \
+  --set kafkaExporter.kafka.servers="{kafka1:9092,kafka2:9092,.....}" --set prometheus.serviceMonitor.enabled=true --set azuremanagedprometheus.use_azuremanagedprometheus=true
+```
