@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -15,14 +14,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	kingpin "github.com/alecthomas/kingpin/v2"
 	"github.com/krallistic/kazoo-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	plog "github.com/prometheus/common/promlog"
 	plogflag "github.com/prometheus/common/promlog/flag"
+
 	"github.com/prometheus/common/version"
 	"github.com/rcrowley/go-metrics"
 	"k8s.io/klog/v2"
@@ -122,15 +123,15 @@ func CanReadCertAndKey(certPath, keyPath string) (bool, error) {
 	certReadable := canReadFile(certPath)
 	keyReadable := canReadFile(keyPath)
 
-	if certReadable == false && keyReadable == false {
+	if !certReadable && !keyReadable {
 		return false, nil
 	}
 
-	if certReadable == false {
+	if !certReadable {
 		return false, fmt.Errorf("error reading %s, certificate and key must be supplied as a pair", certPath)
 	}
 
-	if keyReadable == false {
+	if !keyReadable {
 		return false, fmt.Errorf("error reading %s, certificate and key must be supplied as a pair", keyPath)
 	}
 
@@ -216,7 +217,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 		}
 
 		if opts.tlsCAFile != "" {
-			if ca, err := ioutil.ReadFile(opts.tlsCAFile); err == nil {
+			if ca, err := os.ReadFile(opts.tlsCAFile); err == nil {
 				config.Net.TLS.Config.RootCAs = x509.NewCertPool()
 				config.Net.TLS.Config.RootCAs.AppendCertsFromPEM(ca)
 			} else {
@@ -569,6 +570,10 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			return
 		}
 		for _, group := range describeGroups.Groups {
+			if group.Err != 0 {
+				klog.Errorf("Cannot describe for the group %s with error code %d", group.GroupId, group.Err)
+				continue
+			}
 			offsetFetchRequest := sarama.OffsetFetchRequest{ConsumerGroup: group.GroupId, Version: e.fetchOffsetVersion()}
 			if e.offsetShowAll {
 				for topic, partitions := range offset {
@@ -657,9 +662,23 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 
 	klog.V(DEBUG).Info("Fetching consumer group metrics")
 	if len(e.client.Brokers()) > 0 {
+		uniqueBrokerAddresses := make(map[string]bool)
+		var servers []string
 		for _, broker := range e.client.Brokers() {
-			wg.Add(1)
-			go getConsumerGroupMetrics(broker)
+			normalizedAddress := strings.ToLower(broker.Addr())
+			if !uniqueBrokerAddresses[normalizedAddress] {
+				uniqueBrokerAddresses[normalizedAddress] = true
+				servers = append(servers, broker.Addr())
+			}
+		}
+		klog.Info(servers)
+		for _, broker := range e.client.Brokers() {
+			for _, server := range servers {
+				if server == broker.Addr() {
+					wg.Add(1)
+					go getConsumerGroupMetrics(broker)
+				}
+			}
 		}
 		wg.Wait()
 	} else {
@@ -669,7 +688,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 
 func init() {
 	metrics.UseNilMetrics = true
-	prometheus.MustRegister(version.NewCollector("kafka_exporter"))
+	prometheus.MustRegister(collectors.NewBuildInfoCollector())
 }
 
 //func toFlag(name string, help string) *kingpin.FlagClause {
@@ -939,7 +958,7 @@ func setup(
 
 		certPool := x509.NewCertPool()
 		if opts.serverTlsCAFile != "" {
-			if caCert, err := ioutil.ReadFile(opts.serverTlsCAFile); err == nil {
+			if caCert, err := os.ReadFile(opts.serverTlsCAFile); err == nil {
 				certPool.AppendCertsFromPEM(caCert)
 			} else {
 				klog.Error("error reading server ca")
