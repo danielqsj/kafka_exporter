@@ -184,16 +184,17 @@ kafka_brokers 3
 
 **Metrics details**
 
-| Name                                               | Exposed informations                                |
-|----------------------------------------------------|-----------------------------------------------------|
-| `kafka_topic_partitions`                           | Number of partitions for this Topic                 |
-| `kafka_topic_partition_current_offset`             | Current Offset of a Broker at Topic/Partition       |
-| `kafka_topic_partition_oldest_offset`              | Oldest Offset of a Broker at Topic/Partition        |
-| `kafka_topic_partition_in_sync_replica`            | Number of In-Sync Replicas for this Topic/Partition |
-| `kafka_topic_partition_leader`                     | Leader Broker ID of this Topic/Partition            |
-| `kafka_topic_partition_leader_is_preferred`        | 1 if Topic/Partition is using the Preferred Broker  |
-| `kafka_topic_partition_replicas`                   | Number of Replicas for this Topic/Partition         |
-| `kafka_topic_partition_under_replicated_partition` | 1 if Topic/Partition is under Replicated            |
+| Name                                               | Exposed informations                                							|
+|----------------------------------------------------|----------------------------------------------------------------------------------------------------------|
+| `kafka_topic_partitions`                           | Number of partitions for this Topic                 							|
+| `kafka_topic_partition_current_offset`             | Current Offset of a Broker at Topic/Partition       							|
+| `kafka_topic_partition_oldest_offset`              | Oldest Offset of a Broker at Topic/Partition        							|
+| `kafka_topic_partition_in_sync_replica`            | Number of In-Sync Replicas for this Topic/Partition 							|
+| `kafka_topic_partition_leader`                     | Leader Broker ID of this Topic/Partition            							|
+| `kafka_topic_partition_leader_is_preferred`        | 1 if Topic/Partition is using the Preferred Broker  							|
+| `kafka_topic_partition_replicas`                   | Number of Replicas for this Topic/Partition         							|
+| `kafka_topic_partition_under_replicated_partition` | 1 if Topic/Partition is under Replicated            							|		
+| `kafka_topic_config` 				     | cleanup.policy, max.message.bytes, retention.bytes, retention.ms, segment_bytes for each topic           |
 
 **Metrics output example**
 
@@ -229,6 +230,11 @@ kafka_topic_partition_replicas{partition="0",topic="__consumer_offsets"} 3
 # HELP kafka_topic_partition_under_replicated_partition 1 if Topic/Partition is under Replicated
 # TYPE kafka_topic_partition_under_replicated_partition gauge
 kafka_topic_partition_under_replicated_partition{partition="0",topic="__consumer_offsets"} 0
+
+# HELP kafka_topic_config 1 by default
+# TYPE kafka_topic_config gauge
+kafka_topic_config{cleanup_policy="compact",max_message_bytes="33554432",retention_bytes="-1",retention_ms="115200000",segment_bytes="104857600",topic="__consumer_offsets"} 1
+
 ```
 
 ### Consumer Groups
