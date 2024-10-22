@@ -260,6 +260,20 @@ kafka_consumergroup_current_offset{consumergroup="KMOffsetCache-kafka-manager-38
 kafka_consumergroup_lag{consumergroup="KMOffsetCache-kafka-manager-3806276532-ml44w",partition="0",topic="__consumer_offsets"} 1
 ```
 
+#### Do not see any Consumer group or Lag information
+
+The consumer group metrics would not be available, if there is no consumer with a consumer group.
+
+Run consumer with a consumer group using command line tool
+```bash
+kafka-console-consumer.sh \
+    --consumer.config /path/to/client.properties \
+    --bootstrap-server localhost:9092 \
+    --topic test \
+    --group test-conusmer-group \
+    --from-beginning
+```
+
 Grafana Dashboard
 -------
 
