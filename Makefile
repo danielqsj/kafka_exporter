@@ -1,6 +1,14 @@
 GO    := GO111MODULE=on go
 PROMU := $(GOPATH)/bin/promu
 pkgs   = $(shell $(GO) list ./... | grep -v /vendor/)
+UNAME_S := $(shell uname -s | tr A-Z a-z)
+UNAME_M := $(shell uname -m)
+
+ifeq ($(findstring aarch64,$(UNAME_M)),aarch64)
+    ARCH := arm64
+else
+    ARCH := $(subst x86_64,amd64,$(patsubst i%86,386,$(UNAME_M)))
+endif
 
 PREFIX                  ?= $(shell pwd)
 BIN_DIR                 ?= $(shell pwd)
@@ -37,7 +45,7 @@ build: promu
 
 crossbuild: promu
 	@echo ">> crossbuilding binaries"
-	@$(PROMU) crossbuild --go=1.20
+	@$(PROMU) crossbuild --go=1.23
 
 tarball: promu
 	@echo ">> building release tarball"
@@ -62,9 +70,7 @@ release: promu github-release
 	@$(PROMU) release .tarballs
 
 promu:
-	@GOOS=$(shell uname -s | tr A-Z a-z) \
-		GOARCH=$(subst x86_64,amd64,$(patsubst i%86,386,$(shell uname -m))) \
-		$(GO) install github.com/prometheus/promu@v0.14.0
+	@GOOS=$(UNAME_S) GOARCH=$(ARCH) $(GO) install github.com/prometheus/promu@v0.14.0
 PROMU=$(shell go env GOPATH)/bin/promu
 
 github-release:
@@ -101,6 +107,16 @@ lint: golangci-lint
       -E govet \
       -E errcheck
 
+# Run gosec security checks
+.PHONY: sec
+sec: gosec
+	@$(GOSEC) ./...
+
+# Run staticcheck
+.PHONY: staticcheck
+staticcheck: staticcheck-bin
+	@$(STATICCHECK) ./...
+
 # find or download golangci-lint
 # download golangci-lint if necessary
 golangci-lint:
@@ -113,4 +129,27 @@ else
 GOLANG_LINT=$(shell which golangci-lint)
 endif
 
-.PHONY: all style format build test vet tarball docker promu
+# Ensure gosec is installed
+gosec:
+ifeq (, $(shell which gosec))
+	@GOOS=$(shell uname -s | tr A-Z a-z) \
+    		GOARCH=$(subst x86_64,amd64,$(patsubst i%86,386,$(shell uname -m))) \
+    		$(GO) install github.com/securego/gosec/v2/cmd/gosec@latest
+GOSEC=$(shell go env GOPATH)/bin/gosec
+else
+GOSEC=$(shell which gosec)
+endif
+
+# Ensure staticcheck is installed
+staticcheck-bin:
+ifeq (, $(shell which staticcheck))
+	@GOOS=$(shell uname -s | tr A-Z a-z) \
+    		GOARCH=$(subst x86_64,amd64,$(patsubst i%86,386,$(shell uname -m))) \
+    		$(GO) install honnef.co/go/tools/cmd/staticcheck@latest
+STATICCHECK=$(shell go env GOPATH)/bin/staticcheck
+else
+STATICCHECK=$(shell which staticcheck)
+endif
+
+
+.PHONY: all style format build test vet tarball docker promu sec staticcheck
