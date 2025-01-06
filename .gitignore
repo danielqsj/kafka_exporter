@@ -1,3 +1,7 @@
+# Vendor dir is pulled from 'go mod 'vendor'
+vendor/
+go.sum
+
 # Binaries for programs and plugins
 *.exe
 *.dll
