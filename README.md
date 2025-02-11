@@ -10,26 +10,26 @@ Kafka exporter for Prometheus. For other metrics from Kafka, have a look at the 
 Table of Contents
 -----------------
 
--	[Compatibility](#compatibility)
--	[Dependency](#dependency)
--	[Download](#download)
--	[Compile](#compile)
-	-	[Build Binary](#build-binary)
-	-	[Build Docker Image](#build-docker-image)
--	[Run](#run)
-	-	[Run Binary](#run-binary)
-	-	[Run Docker Image](#run-docker-image)
- -	-	[Run Docker Compose](#run-docker-compose)
--	[Flags](#flags)
-    -	[Notes](#notes)
--	[Metrics](#metrics)
-	-	[Brokers](#brokers)
-	-	[Topics](#topics)
-	-	[Consumer Groups](#consumer-groups)
--	[Grafana Dashboard](#grafana-dashboard)
--   [Contribute](#contribute)
--   [Donation](#donation)
--   [License](#license)
+- [Compatibility](#compatibility)
+- [Dependency](#dependency)
+- [Download](#download)
+- [Compile](#compile)
+  - [Build Binary](#build-binary)
+  - [Build Docker Image](#build-docker-image)
+- [Run](#run)
+  - [Run Binary](#run-binary)
+  - [Run Docker Image](#run-docker-image)
+  - [Run Docker Compose](#run-docker-compose)
+- [Flags](#flags)
+  - [Notes](#notes)
+- [Metrics](#metrics)
+  - [Brokers](#brokers)
+  - [Topics](#topics)
+  - [Consumer Groups](#consumer-groups)
+- [Grafana Dashboard](#grafana-dashboard)
+- [Contribute](#contribute)
+- [Donation](#donation)
+- [License](#license)
 
 Compatibility
 -------------
@@ -39,9 +39,9 @@ Support [Apache Kafka](https://kafka.apache.org) version 0.10.1.0 (and later).
 Dependency
 ----------
 
--	[Prometheus](https://prometheus.io)
--	[Sarama](https://shopify.github.io/sarama)
--	[Golang](https://golang.org)
+- [Prometheus](https://prometheus.io)
+- [Sarama](https://shopify.github.io/sarama)
+- [Golang](https://golang.org)
 
 Download
 --------
