@@ -291,6 +291,20 @@ kafka_consumergroup_members{consumergroup="KMOffsetCache-kafka-manager-380627653
 
 ```
 
+#### Do not see any Consumer group or Lag information
+
+The consumer group metrics would not be available, if there is no consumer with a consumer group.
+
+Run consumer with a consumer group using command line tool
+```bash
+kafka-console-consumer.sh \
+    --consumer.config /path/to/client.properties \
+    --bootstrap-server localhost:9092 \
+    --topic test \
+    --group test-conusmer-group \
+    --from-beginning
+```
+
 Grafana Dashboard
 -------
 
