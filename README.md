@@ -10,26 +10,26 @@ Kafka exporter for Prometheus. For other metrics from Kafka, have a look at the 
 Table of Contents
 -----------------
 
--	[Compatibility](#compatibility)
--	[Dependency](#dependency)
--	[Download](#download)
--	[Compile](#compile)
-	-	[Build Binary](#build-binary)
-	-	[Build Docker Image](#build-docker-image)
--	[Run](#run)
-	-	[Run Binary](#run-binary)
-	-	[Run Docker Image](#run-docker-image)
- -	-	[Run Docker Compose](#run-docker-compose)
--	[Flags](#flags)
-    -	[Notes](#notes)
--	[Metrics](#metrics)
-	-	[Brokers](#brokers)
-	-	[Topics](#topics)
-	-	[Consumer Groups](#consumer-groups)
--	[Grafana Dashboard](#grafana-dashboard)
--   [Contribute](#contribute)
--   [Donation](#donation)
--   [License](#license)
+- [Compatibility](#compatibility)
+- [Dependency](#dependency)
+- [Download](#download)
+- [Compile](#compile)
+  - [Build Binary](#build-binary)
+  - [Build Docker Image](#build-docker-image)
+- [Run](#run)
+  - [Run Binary](#run-binary)
+  - [Run Docker Image](#run-docker-image)
+  - [Run Docker Compose](#run-docker-compose)
+- [Flags](#flags)
+  - [Notes](#notes)
+- [Metrics](#metrics)
+  - [Brokers](#brokers)
+  - [Topics](#topics)
+  - [Consumer Groups](#consumer-groups)
+- [Grafana Dashboard](#grafana-dashboard)
+- [Contribute](#contribute)
+- [Donation](#donation)
+- [License](#license)
 
 Compatibility
 -------------
@@ -39,9 +39,9 @@ Support [Apache Kafka](https://kafka.apache.org) version 0.10.1.0 (and later).
 Dependency
 ----------
 
--	[Prometheus](https://prometheus.io)
--	[Sarama](https://shopify.github.io/sarama)
--	[Golang](https://golang.org)
+- [Prometheus](https://prometheus.io)
+- [Sarama](https://shopify.github.io/sarama)
+- [Golang](https://golang.org)
 
 Download
 --------
@@ -169,9 +169,10 @@ For details on the underlying metrics please see [Apache Kafka](https://kafka.ap
 
 **Metrics details**
 
-| Name            | Exposed informations                   |
-|-----------------|----------------------------------------|
-| `kafka_brokers` | Number of Brokers in the Kafka Cluster |
+| Name                | Exposed informations                   |
+|---------------------|----------------------------------------|
+| `kafka_brokers`     | Number of Brokers in the Kafka Cluster |
+| `kafka_broker_info` | Information about the Kafka Broker     |
 
 **Metrics output example**
 
@@ -179,9 +180,18 @@ For details on the underlying metrics please see [Apache Kafka](https://kafka.ap
 # HELP kafka_brokers Number of Brokers in the Kafka Cluster.
 # TYPE kafka_brokers gauge
 kafka_brokers 3
+# HELP kafka_broker_info Information about the Kafka Broker.
+# TYPE kafka_broker_info gauge
+kafka_broker_info{address="b-1.kafka-example.org:9092",id="1"} 1
+kafka_broker_info{address="b-2.kafka-example.org:9092",id="2"} 2
+kafka_broker_info{address="b-3.kafka-example.org:9092",id="3"} 3
 ```
 
 ### Topics
+
+**Required permissions**
+
+Describe all topics.
 
 **Metrics details**
 
@@ -234,13 +244,20 @@ kafka_topic_partition_under_replicated_partition{partition="0",topic="__consumer
 
 ### Consumer Groups
 
+**Required permissions**
+
+Describe all groups.
+
 **Metrics details**
 
 | Name                                         | Exposed informations                                                     |
 |----------------------------------------------|--------------------------------------------------------------------------|
 | `kafka_consumergroup_current_offset`         | Current Offset of a ConsumerGroup at Topic/Partition                     |
+| `kafka_consumergroup_current_offset_sum`     | Current Offset of a ConsumerGroup at Topic for all partitions            |
 | `kafka_consumergroup_lag`                    | Current Approximate Lag of a ConsumerGroup at Topic/Partition            |
+| `kafka_consumergroup_lag_sum`                | Current Approximate Lag of a ConsumerGroup at Topic for all partitions   |
 | `kafka_consumergroupzookeeper_lag_zookeeper` | Current Approximate Lag(zookeeper) of a ConsumerGroup at Topic/Partition |
+| `kafka_consumergroup_members`                | Amount of members in a consumer group                                    |
 
 #### Important Note
 
@@ -256,9 +273,22 @@ To be able to collect the metrics `kafka_consumergroupzookeeper_lag_zookeeper`, 
 # TYPE kafka_consumergroup_current_offset gauge
 kafka_consumergroup_current_offset{consumergroup="KMOffsetCache-kafka-manager-3806276532-ml44w",partition="0",topic="__consumer_offsets"} -1
 
+# HELP kafka_consumergroup_current_offset_sum Current Offset of a ConsumerGroup at Topic for all partitions
+# TYPE kafka_consumergroup_current_offset_sum gauge
+kafka_consumergroup_current_offset_sum{consumergroup="KMOffsetCache-kafka-manager-3806276532-ml44w",topic="__consumer_offsets"} -1
+
 # HELP kafka_consumergroup_lag Current Approximate Lag of a ConsumerGroup at Topic/Partition
 # TYPE kafka_consumergroup_lag gauge
 kafka_consumergroup_lag{consumergroup="KMOffsetCache-kafka-manager-3806276532-ml44w",partition="0",topic="__consumer_offsets"} 1
+
+# HELP kafka_consumergroup_lag_sum Current Approximate Lag of a ConsumerGroup at Topic for all partitions
+# TYPE kafka_consumergroup_lag_sum gauge
+kafka_consumergroup_lag_sum{consumergroup="KMOffsetCache-kafka-manager-3806276532-ml44w",topic="__consumer_offsets"} 1
+
+# HELP kafka_consumergroup_members Amount of members in a consumer group
+# TYPE kafka_consumergroup_members gauge
+kafka_consumergroup_members{consumergroup="KMOffsetCache-kafka-manager-3806276532-ml44w"} 1
+
 ```
 
 Grafana Dashboard
