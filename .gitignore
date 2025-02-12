@@ -29,4 +29,4 @@ kafka_exporter
 test/
 .DS_Store
 
-
+*.strimzi

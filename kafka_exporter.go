@@ -59,6 +59,7 @@ var (
 	consumergroupLagSum                *prometheus.Desc
 	consumergroupLagZookeeper          *prometheus.Desc
 	consumergroupMembers               *prometheus.Desc
+	consumergroupTopicMembers          *prometheus.Desc
 )
 
 // Exporter collects Kafka stats from the given server and exports them using
@@ -614,9 +615,29 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 					}
 				}
 			}
+
 			ch <- prometheus.MustNewConstMetric(
 				consumergroupMembers, prometheus.GaugeValue, float64(len(group.Members)), group.GroupId,
 			)
+
+			uniqueTopics := make(map[string]int)
+			for _, member := range group.Members {
+				assignment, err := member.GetMemberAssignment()
+				if err != nil || assignment == nil {
+					klog.Errorf("Cannot get GetMemberAssignment of group member %v : %v", member, err)
+					continue
+				}
+				for topic := range assignment.Topics {
+					uniqueTopics[topic]++
+				}
+			}
+
+			for topic, count := range uniqueTopics {
+				ch <- prometheus.MustNewConstMetric(
+					consumergroupTopicMembers, prometheus.GaugeValue, float64(count), group.GroupId, topic,
+				)
+			}
+
 			offsetFetchResponse, err := broker.FetchOffset(&offsetFetchRequest)
 			if err != nil {
 				klog.Errorf("Cannot get offset of group %s: %v", group.GroupId, err)
@@ -929,6 +950,12 @@ func setup(
 		prometheus.BuildFQName(namespace, "consumergroup", "members"),
 		"Amount of members in a consumer group",
 		[]string{"consumergroup"}, labels,
+	)
+
+	consumergroupTopicMembers = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "consumergroup", "topicmembers"),
+		"Amount of members in a consumer group against a topic",
+		[]string{"consumergroup", "topic"}, labels,
 	)
 
 	if logSarama {
