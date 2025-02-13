@@ -56,10 +56,12 @@ docker: build
 	@docker build -t "$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)" --build-arg BIN_DIR=. .
 
 push: crossbuild
-	@echo ">> building and pushing multi-arch docker images, $(DOCKER_USERNAME),$(DOCKER_IMAGE_NAME),$(GIT_TAG_NAME)"
+ifneq (, $(DOCKER_PASSWORD))
 	@docker login -u $(DOCKER_USERNAME) -p $(DOCKER_PASSWORD)
+endif
+	@echo ">> building and pushing multi-arch docker images, $(DOCKER_USERNAME),$(DOCKER_IMAGE_NAME),$(GIT_TAG_NAME)"
 	@docker buildx create --use
-	@docker buildx build -t "$(DOCKER_USERNAME)/$(DOCKER_IMAGE_NAME):$(GIT_TAG_NAME)" \
+	@docker buildx build -t "$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)" \
 		--output "$(PUSHTAG)" \
 		--platform "$(DOCKER_PLATFORMS)" \
 		.
@@ -122,8 +124,8 @@ staticcheck: staticcheck-bin
 golangci-lint:
 ifeq (, $(shell which golangci-lint))
 	@GOOS=$(shell uname -s | tr A-Z a-z) \
-    		GOARCH=$(subst x86_64,amd64,$(patsubst i%86,386,$(shell uname -m))) \
-    		$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.52.2
+	GOARCH=$(subst x86_64,amd64,$(patsubst i%86,386,$(shell uname -m))) \
+	$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.52.2
 GOLANG_LINT=$(shell go env GOPATH)/bin/golangci-lint
 else
 GOLANG_LINT=$(shell which golangci-lint)
