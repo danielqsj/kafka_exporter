@@ -21,11 +21,11 @@ import (
 	"github.com/krallistic/kazoo-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	plog "github.com/prometheus/common/promlog"
 	plogflag "github.com/prometheus/common/promlog/flag"
 
+	versionCollector "github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/version"
 	"github.com/rcrowley/go-metrics"
 	"k8s.io/klog/v2"
@@ -707,7 +707,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 
 func init() {
 	metrics.UseNilMetrics = true
-	prometheus.MustRegister(collectors.NewBuildInfoCollector())
+	prometheus.MustRegister(versionCollector.NewCollector("kafka_exporter"))
 }
 
 //func toFlag(name string, help string) *kingpin.FlagClause {
