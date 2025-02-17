@@ -45,7 +45,7 @@ build: promu
 
 crossbuild: promu
 	@echo ">> crossbuilding binaries"
-	@$(PROMU) crossbuild --go=1.23
+	@$(PROMU) crossbuild --go=1.24
 
 tarball: promu
 	@echo ">> building release tarball"
@@ -95,9 +95,7 @@ lint: golangci-lint
 	@$(GOLANG_LINT) run \
       --timeout 30m \
       --disable-all \
-      -E deadcode \
       -E unused \
-      -E varcheck \
       -E ineffassign \
       -E goimports \
       -E gofmt \
@@ -123,7 +121,7 @@ golangci-lint:
 ifeq (, $(shell which golangci-lint))
 	@GOOS=$(shell uname -s | tr A-Z a-z) \
     		GOARCH=$(subst x86_64,amd64,$(patsubst i%86,386,$(shell uname -m))) \
-    		$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.52.2
+    		$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.5
 GOLANG_LINT=$(shell go env GOPATH)/bin/golangci-lint
 else
 GOLANG_LINT=$(shell which golangci-lint)
