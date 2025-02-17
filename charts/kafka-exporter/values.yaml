@@ -27,6 +27,7 @@ kafkaExporter:
     handshake: true
     username: ""
     password: ""
+    existingSecret: "" # has the password stored in it. If set, will override password
     mechanism: ""
 
   tls:
