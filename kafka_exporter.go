@@ -177,6 +177,12 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 	if opts.useSASL {
 		// Convert to lowercase so that SHA512 and SHA256 is still valid
 		opts.saslMechanism = strings.ToLower(opts.saslMechanism)
+
+		saslPassword := opts.saslPassword
+		if saslPassword == "" {
+			saslPassword = os.Getenv("SASL_USER_PASSWORD")
+		}
+
 		switch opts.saslMechanism {
 		case "scram-sha512":
 			config.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient { return &XDGSCRAMClient{HashGeneratorFcn: SHA512} }
@@ -195,7 +201,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 				config.Net.SASL.GSSAPI.KeyTabPath = opts.keyTabPath
 			} else {
 				config.Net.SASL.GSSAPI.AuthType = sarama.KRB5_USER_AUTH
-				config.Net.SASL.GSSAPI.Password = opts.saslPassword
+				config.Net.SASL.GSSAPI.Password = saslPassword
 			}
 			if opts.saslDisablePAFXFast {
 				config.Net.SASL.GSSAPI.DisablePAFXFAST = true
@@ -218,8 +224,8 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 			config.Net.SASL.User = opts.saslUsername
 		}
 
-		if opts.saslPassword != "" {
-			config.Net.SASL.Password = opts.saslPassword
+		if saslPassword != "" {
+			config.Net.SASL.Password = saslPassword
 		}
 	}
 
