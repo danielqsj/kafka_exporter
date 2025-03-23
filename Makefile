@@ -149,5 +149,12 @@ else
 STATICCHECK=$(shell which staticcheck)
 endif
 
+run-trivy-vulns: run-trivy-src-vulns run-trivy-docker-vulns
 
-.PHONY: all style format build test vet tarball docker promu sec staticcheck
+run-trivy-src-vulns:
+	trivy repository --scanners vuln . --include-dev-deps
+
+run-trivy-docker-vulns: docker
+	trivy image "$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)"
+
+.PHONY: all style format build test vet tarball docker promu sec staticcheck run-trivy-vulns run-trivy-src-vulns run-trivy-docker-vulns
