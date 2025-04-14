@@ -565,7 +565,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 
 	wg.Wait()
 
-	getConsumerGroupMetrics := func(broker *sarama.Broker) {
+	getConsumerGroupMetrics := func(broker *sarama.Broker, processedGroups map[string]bool) {
 		defer wg.Done()
 		if err := broker.Open(e.client.Config()); err != nil && err != sarama.ErrAlreadyConnected {
 			klog.Errorf("Cannot connect to broker %d: %v", broker.ID(), err)
@@ -579,11 +579,14 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			return
 		}
 		groupIds := make([]string, 0)
+		e.mu.Lock()
 		for groupId := range groups.Groups {
-			if e.groupFilter.MatchString(groupId) && !e.groupExclude.MatchString(groupId) {
+			if e.groupFilter.MatchString(groupId) && !e.groupExclude.MatchString(groupId) && !processedGroups[groupId] {
 				groupIds = append(groupIds, groupId)
+				processedGroups[groupId] = true
 			}
 		}
+		e.mu.Unlock()
 
 		describeGroups, err := broker.DescribeGroups(&sarama.DescribeGroupsRequest{Groups: groupIds})
 		if err != nil {
@@ -657,7 +660,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 						consumergroupCurrentOffset, prometheus.GaugeValue, float64(currentOffset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
 					)
 					e.mu.Lock()
-					currentPartitionOffset, currentPartitionOffsetError := e.client.GetOffset(topic, partition, sarama.OffsetNewest) 
+					currentPartitionOffset, currentPartitionOffsetError := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
 					if currentPartitionOffsetError != nil {
 						klog.Errorf("Cannot get current offset of topic %s partition %d: %v", topic, partition, currentPartitionOffsetError)
 					} else {
@@ -673,11 +676,11 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 							lag = currentPartitionOffset - offsetFetchResponseBlock.Offset
 							lagSum += lag
 						}
-		
+
 						ch <- prometheus.MustNewConstMetric(
 							consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
 						)
-					} 
+					}
 					e.mu.Unlock()
 				}
 				ch <- prometheus.MustNewConstMetric(
@@ -702,11 +705,12 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			}
 		}
 		klog.Info(servers)
+		processedGroups := make(map[string]bool)
 		for _, broker := range e.client.Brokers() {
 			for _, server := range servers {
 				if server == broker.Addr() {
 					wg.Add(1)
-					go getConsumerGroupMetrics(broker)
+					go getConsumerGroupMetrics(broker, processedGroups)
 				}
 			}
 		}
