@@ -211,7 +211,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 		case "plain":
 		default:
 			return nil, fmt.Errorf(
-				`invalid sasl mechanism "%s": can only be "scram-sha256", "scram-sha512", "gssapi", "awsiam" or "plain"`,
+				`invalid sasl mechanism %q: can only be "scram-sha256", "scram-sha512", "gssapi", "awsiam" or "plain"`,
 				opts.saslMechanism,
 			)
 		}
