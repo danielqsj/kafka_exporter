@@ -19,7 +19,6 @@ import (
 	kingpin "github.com/alecthomas/kingpin/v2"
 	"github.com/aws/aws-msk-iam-sasl-signer-go/signer"
 	"github.com/krallistic/kazoo-go"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	plog "github.com/prometheus/common/promlog"
@@ -248,7 +247,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 
 		canReadCertAndKey, err := CanReadCertAndKey(opts.tlsCertFile, opts.tlsKeyFile)
 		if err != nil {
-			return nil, errors.Wrap(err, "error reading cert and key")
+			return nil, fmt.Errorf("error reading cert and key: %w", err)
 		}
 		if canReadCertAndKey {
 			cert, err := tls.LoadX509KeyPair(opts.tlsCertFile, opts.tlsKeyFile)
@@ -264,13 +263,13 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 		klog.V(DEBUG).Infoln("Using zookeeper lag, so connecting to zookeeper")
 		zookeeperClient, err = kazoo.NewKazoo(opts.uriZookeeper, nil)
 		if err != nil {
-			return nil, errors.Wrap(err, "error connecting to zookeeper")
+			return nil, fmt.Errorf("error connecting to zookeeper: %w", err)
 		}
 	}
 
 	interval, err := time.ParseDuration(opts.metadataRefreshInterval)
 	if err != nil {
-		return nil, errors.Wrap(err, "Cannot parse metadata refresh interval")
+		return nil, fmt.Errorf("Cannot parse metadata refresh interval: %w", err)
 	}
 
 	config.Metadata.RefreshFrequency = interval
@@ -278,9 +277,8 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 	config.Metadata.AllowAutoTopicCreation = opts.allowAutoTopicCreation
 
 	client, err := sarama.NewClient(opts.uri, config)
-
 	if err != nil {
-		return nil, errors.Wrap(err, "Error Init Kafka Client")
+		return nil, fmt.Errorf("Error Init Kafka Client: %w", err)
 	}
 
 	klog.V(TRACE).Infoln("Done Init Clients")
@@ -657,7 +655,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 						consumergroupCurrentOffset, prometheus.GaugeValue, float64(currentOffset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
 					)
 					e.mu.Lock()
-					currentPartitionOffset, currentPartitionOffsetError := e.client.GetOffset(topic, partition, sarama.OffsetNewest) 
+					currentPartitionOffset, currentPartitionOffsetError := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
 					if currentPartitionOffsetError != nil {
 						klog.Errorf("Cannot get current offset of topic %s partition %d: %v", topic, partition, currentPartitionOffsetError)
 					} else {
@@ -673,11 +671,11 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 							lag = currentPartitionOffset - offsetFetchResponseBlock.Offset
 							lagSum += lag
 						}
-		
+
 						ch <- prometheus.MustNewConstMetric(
 							consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
 						)
-					} 
+					}
 					e.mu.Unlock()
 				}
 				ch <- prometheus.MustNewConstMetric(
