@@ -385,7 +385,7 @@ func (e *Exporter) collectChans(quit chan struct{}) {
 }
 
 func (e *Exporter) collect(ch chan<- prometheus.Metric) {
-	var wg = sync.WaitGroup{}
+	wg := sync.WaitGroup{}
 	ch <- prometheus.MustNewConstMetric(
 		clusterBrokers, prometheus.GaugeValue, float64(len(e.client.Brokers())),
 	)
@@ -506,7 +506,6 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 
 			if e.useZooKeeperLag {
 				ConsumerGroups, err := e.zookeeperClient.Consumergroups()
-
 				if err != nil {
 					klog.Errorf("Cannot get consumer group %v", err)
 				}

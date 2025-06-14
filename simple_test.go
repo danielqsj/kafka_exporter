@@ -47,7 +47,7 @@ func assumeKafka() bool {
 }
 
 func execute(handler func(response *http.Response)) {
-	var e = errors.New("dummy")
+	e := errors.New("dummy")
 	for e != nil {
 		resp, err := http.Get("http://localhost:9304/metrics")
 		if err != nil {
