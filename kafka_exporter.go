@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
-	kingpin "github.com/alecthomas/kingpin/v2"
+	"github.com/alecthomas/kingpin/v2"
 	"github.com/aws/aws-msk-iam-sasl-signer-go/signer"
 	"github.com/krallistic/kazoo-go"
 	"github.com/pkg/errors"
@@ -657,7 +657,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 						consumergroupCurrentOffset, prometheus.GaugeValue, float64(currentOffset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
 					)
 					e.mu.Lock()
-					currentPartitionOffset, currentPartitionOffsetError := e.client.GetOffset(topic, partition, sarama.OffsetNewest) 
+					currentPartitionOffset, currentPartitionOffsetError := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
 					if currentPartitionOffsetError != nil {
 						klog.Errorf("Cannot get current offset of topic %s partition %d: %v", topic, partition, currentPartitionOffsetError)
 					} else {
@@ -673,11 +673,11 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 							lag = currentPartitionOffset - offsetFetchResponseBlock.Offset
 							lagSum += lag
 						}
-		
+
 						ch <- prometheus.MustNewConstMetric(
 							consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
 						)
-					} 
+					}
 					e.mu.Unlock()
 				}
 				ch <- prometheus.MustNewConstMetric(
@@ -953,8 +953,10 @@ func setup(
 	defer exporter.client.Close()
 	prometheus.MustRegister(exporter)
 
-	http.Handle(metricsPath, promhttp.Handler())
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+
+	mux.Handle(metricsPath, promhttp.Handler())
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		_, err := w.Write([]byte(`<html>
 	        <head><title>Kafka Exporter</title></head>
 	        <body>
@@ -966,7 +968,7 @@ func setup(
 			klog.Error("Error handle / request", err)
 		}
 	})
-	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		// need more specific sarama check
 		_, err := w.Write([]byte("ok"))
 		if err != nil {
@@ -997,11 +999,10 @@ func setup(
 		}
 
 		tlsConfig := &tls.Config{
-			ClientCAs:                certPool,
-			ClientAuth:               clientAuthType,
-			MinVersion:               tls.VersionTLS12,
-			CurvePreferences:         []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
-			PreferServerCipherSuites: true,
+			ClientCAs:        certPool,
+			ClientAuth:       clientAuthType,
+			MinVersion:       tls.VersionTLS12,
+			CurvePreferences: []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
 			CipherSuites: []uint16{
 				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
 				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
@@ -1014,11 +1015,17 @@ func setup(
 		}
 		server := &http.Server{
 			Addr:      listenAddress,
+			Handler:   mux,
 			TLSConfig: tlsConfig,
 		}
 		klog.Fatal(server.ListenAndServeTLS(opts.serverTlsCertFile, opts.serverTlsKeyFile))
-	} else {
-		klog.V(INFO).Infoln("Listening on HTTP", listenAddress)
-		klog.Fatal(http.ListenAndServe(listenAddress, nil))
 	}
+
+	server := &http.Server{
+		Addr:    listenAddress,
+		Handler: mux,
+	}
+
+	klog.V(INFO).Infoln("Listening on HTTP", listenAddress)
+	klog.Fatal(server.ListenAndServe())
 }
