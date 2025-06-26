@@ -3,7 +3,7 @@ module github.com/danielqsj/kafka_exporter
 go 1.24
 
 require (
-	github.com/IBM/sarama v1.45.0
+	github.com/IBM/sarama v1.45.2
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/aws/aws-msk-iam-sasl-signer-go v1.0.0
 	github.com/krallistic/kazoo-go v0.0.0-20170526135507-a15279744f4e
@@ -47,7 +47,7 @@ require (
 	github.com/jcmturner/gofork v1.7.6 // indirect
 	github.com/jcmturner/gokrb5/v8 v8.4.4 // indirect
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
-	github.com/klauspost/compress v1.17.11 // indirect
+	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
@@ -56,9 +56,9 @@ require (
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect
-	golang.org/x/crypto v0.32.0 // indirect
-	golang.org/x/net v0.34.0 // indirect
-	golang.org/x/sys v0.29.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/crypto v0.38.0 // indirect
+	golang.org/x/net v0.40.0 // indirect
+	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/text v0.25.0 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
 )
