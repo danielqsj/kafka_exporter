@@ -8,8 +8,10 @@ import (
 	"github.com/xdg-go/scram"
 )
 
-var SHA256 scram.HashGeneratorFcn = func() hash.Hash { return sha256.New() }
-var SHA512 scram.HashGeneratorFcn = func() hash.Hash { return sha512.New() }
+var (
+	SHA256 scram.HashGeneratorFcn = func() hash.Hash { return sha256.New() }
+	SHA512 scram.HashGeneratorFcn = func() hash.Hash { return sha512.New() }
+)
 
 type XDGSCRAMClient struct {
 	*scram.Client

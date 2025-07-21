@@ -19,7 +19,6 @@ import (
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/aws/aws-msk-iam-sasl-signer-go/signer"
 	"github.com/krallistic/kazoo-go"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	plog "github.com/prometheus/common/promlog"
@@ -212,7 +211,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 		case "plain":
 		default:
 			return nil, fmt.Errorf(
-				`invalid sasl mechanism "%s": can only be "scram-sha256", "scram-sha512", "gssapi", "awsiam" or "plain"`,
+				`invalid sasl mechanism %q: can only be "scram-sha256", "scram-sha512", "gssapi", "awsiam" or "plain"`,
 				opts.saslMechanism,
 			)
 		}
@@ -248,7 +247,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 
 		canReadCertAndKey, err := CanReadCertAndKey(opts.tlsCertFile, opts.tlsKeyFile)
 		if err != nil {
-			return nil, errors.Wrap(err, "error reading cert and key")
+			return nil, fmt.Errorf("error reading cert and key: %w", err)
 		}
 		if canReadCertAndKey {
 			cert, err := tls.LoadX509KeyPair(opts.tlsCertFile, opts.tlsKeyFile)
@@ -264,13 +263,13 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 		klog.V(DEBUG).Infoln("Using zookeeper lag, so connecting to zookeeper")
 		zookeeperClient, err = kazoo.NewKazoo(opts.uriZookeeper, nil)
 		if err != nil {
-			return nil, errors.Wrap(err, "error connecting to zookeeper")
+			return nil, fmt.Errorf("error connecting to zookeeper: %w", err)
 		}
 	}
 
 	interval, err := time.ParseDuration(opts.metadataRefreshInterval)
 	if err != nil {
-		return nil, errors.Wrap(err, "Cannot parse metadata refresh interval")
+		return nil, fmt.Errorf("Cannot parse metadata refresh interval: %w", err)
 	}
 
 	config.Metadata.RefreshFrequency = interval
@@ -278,9 +277,8 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 	config.Metadata.AllowAutoTopicCreation = opts.allowAutoTopicCreation
 
 	client, err := sarama.NewClient(opts.uri, config)
-
 	if err != nil {
-		return nil, errors.Wrap(err, "Error Init Kafka Client")
+		return nil, fmt.Errorf("Error Init Kafka Client: %w", err)
 	}
 
 	klog.V(TRACE).Infoln("Done Init Clients")
@@ -387,7 +385,7 @@ func (e *Exporter) collectChans(quit chan struct{}) {
 }
 
 func (e *Exporter) collect(ch chan<- prometheus.Metric) {
-	var wg = sync.WaitGroup{}
+	wg := sync.WaitGroup{}
 	ch <- prometheus.MustNewConstMetric(
 		clusterBrokers, prometheus.GaugeValue, float64(len(e.client.Brokers())),
 	)
@@ -508,7 +506,6 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 
 			if e.useZooKeeperLag {
 				ConsumerGroups, err := e.zookeeperClient.Consumergroups()
-
 				if err != nil {
 					klog.Errorf("Cannot get consumer group %v", err)
 				}

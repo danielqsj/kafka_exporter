@@ -7,7 +7,6 @@ require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/aws/aws-msk-iam-sasl-signer-go v1.0.0
 	github.com/krallistic/kazoo-go v0.0.0-20170526135507-a15279744f4e
-	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.20.0
 	github.com/prometheus/common v0.55.0
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
