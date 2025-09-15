@@ -73,10 +73,15 @@ spec:
             {{- end }}
             {{- end }}
             {{- if .Values.kafkaExporter.log }}
-            - --verbosity={{ .Values.kafkaExporter.log.verbosity }}
+            {{- if .Values.kafkaExporter.log.level }}
+            - --log.level={{ .Values.kafkaExporter.log.level }}
+            {{- end }}
+            {{- if .Values.kafkaExporter.log.format }}
+            - --log.format={{ .Values.kafkaExporter.log.format }}
             {{- end }}
             {{- if .Values.kafkaExporter.log.enableSarama }}
             - --log.enable-sarama
+            {{- end }}
             {{- end }}
           ports:
             - name: metrics
