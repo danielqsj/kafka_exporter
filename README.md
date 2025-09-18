@@ -54,6 +54,7 @@ Compile
 ### Build Binary
 
 ```shell
+go mod tidy
 make
 ```
 
