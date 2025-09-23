@@ -137,14 +137,12 @@ func (s *SaramaLoggerAdapter) Printf(format string, v ...interface{}) {
 
 // Print implements the sarama.StdLogger interface
 func (s *SaramaLoggerAdapter) Print(v ...interface{}) {
-	msg := strings.TrimSuffix(fmt.Sprint(v...), "\n")
-	s.logWithSource(msg)
+	s.logWithSource(fmt.Sprint(v...))
 }
 
 // Println implements the sarama.StdLogger interface
 func (s *SaramaLoggerAdapter) Println(v ...interface{}) {
-	msg := strings.TrimSuffix(fmt.Sprint(v...), "\n")
-	s.logWithSource(msg)
+	s.logWithSource(fmt.Sprint(v...))
 }
 
 // logWithSource logs the message with correct source information
