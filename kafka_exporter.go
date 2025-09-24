@@ -125,6 +125,7 @@ func (m *MSKAccessTokenProvider) Token() (*sarama.AccessToken, error) {
 // SaramaLoggerAdapter adapts slog.Logger to work with sarama's logging interface
 type SaramaLoggerAdapter struct {
 	logger *slog.Logger
+	level  slog.Level
 }
 
 // Printf implements the sarama.StdLogger interface
@@ -150,17 +151,14 @@ func (s *SaramaLoggerAdapter) logWithSource(msg string) {
 	ctx := context.Background()
 
 	// Check if logging is enabled at Info level
-	if !s.logger.Enabled(ctx, slog.LevelInfo) {
+	if !s.logger.Enabled(ctx, s.level) {
 		return
 	}
 
+	// reference: https://github.com/golang/go/blob/go1.25.1/src/log/slog/logger.go#L247
 	var pcs [1]uintptr
-	// Skip frames to get to the actual sarama caller:
-	// 0: runtime.Callers, 1: this function, 2: Printf/Print/Println, 3: sarama internal
-	runtime.Callers(4, pcs[:])
-
-	// Create record with the correct source location
-	r := slog.NewRecord(time.Now(), slog.LevelInfo, msg, pcs[0])
+	runtime.Callers(3, pcs[:])
+	r := slog.NewRecord(time.Now(), s.level, msg, pcs[0])
 	r.Add("component", "sarama")
 
 	_ = s.logger.Handler().Handle(ctx, r)
@@ -968,7 +966,8 @@ func setup(
 
 	if logSarama {
 		// Create a custom logger adapter that uses the same structured logger as the main application
-		sarama.Logger = &SaramaLoggerAdapter{logger: logger}
+		sarama.Logger = &SaramaLoggerAdapter{logger: logger, level: slog.LevelInfo}
+		sarama.DebugLogger = &SaramaLoggerAdapter{logger: logger, level: slog.LevelDebug}
 	}
 
 	exporter, err := NewExporter(opts, topicFilter, topicExclude, groupFilter, groupExclude, logger)
