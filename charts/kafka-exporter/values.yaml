@@ -37,7 +37,8 @@ kafkaExporter:
     keyFile: ""
 
   log:
-    verbosity: 0
+    level: "info"      # Log level: debug, info, warn, error
+    format: "logfmt"   # Log format: logfmt, json
     enableSarama: false
 
 prometheus:

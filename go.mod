@@ -7,11 +7,10 @@ require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/aws/aws-msk-iam-sasl-signer-go v1.0.0
 	github.com/krallistic/kazoo-go v0.0.0-20170526135507-a15279744f4e
-	github.com/prometheus/client_golang v1.20.0
-	github.com/prometheus/common v0.55.0
+	github.com/prometheus/client_golang v1.23.2
+	github.com/prometheus/common v0.66.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	github.com/xdg-go/scram v1.1.2
-	k8s.io/klog/v2 v2.130.1
 )
 
 require (
@@ -34,9 +33,6 @@ require (
 	github.com/eapache/go-resiliency v1.7.0 // indirect
 	github.com/eapache/go-xerial-snappy v0.0.0-20230731223053-c322873962e3 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
-	github.com/go-kit/log v0.2.1 // indirect
-	github.com/go-logfmt/logfmt v0.6.0 // indirect
-	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
@@ -47,17 +43,19 @@ require (
 	github.com/jcmturner/gokrb5/v8 v8.4.4 // indirect
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
-	github.com/prometheus/client_model v0.6.1 // indirect
-	github.com/prometheus/procfs v0.15.1 // indirect
+	github.com/prometheus/client_model v0.6.2 // indirect
+	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/samuel/go-zookeeper v0.0.0-20201211165307-7117e9ea2414 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect
-	golang.org/x/crypto v0.38.0 // indirect
-	golang.org/x/net v0.40.0 // indirect
-	golang.org/x/sys v0.33.0 // indirect
-	golang.org/x/text v0.25.0 // indirect
-	google.golang.org/protobuf v1.34.2 // indirect
+	go.yaml.in/yaml/v2 v2.4.2 // indirect
+	golang.org/x/crypto v0.41.0 // indirect
+	golang.org/x/net v0.43.0 // indirect
+	golang.org/x/sys v0.35.0 // indirect
+	golang.org/x/text v0.28.0 // indirect
+	google.golang.org/protobuf v1.36.8 // indirect
 )

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
+	pslog "github.com/prometheus/common/promslog"
 )
 
 var bootstrap_servers = []string{"localhost:9092"}
@@ -66,5 +67,5 @@ func runServer() {
 	opts.uriZookeeper = []string{"localhost:2181"}
 	opts.kafkaVersion = sarama.V1_0_0_0.String()
 	opts.metadataRefreshInterval = "30s"
-	setup("localhost:9304", "/metrics", ".*", "^$", ".*", "^$", false, opts, nil)
+	setup("localhost:9304", "/metrics", ".*", "^$", ".*", "^$", false, opts, nil, pslog.New(&pslog.Config{}))
 }
