@@ -152,15 +152,12 @@ func newOauthbearerTokenProvider(oauth2Config OAuth2Config) *oauthbearerTokenPro
 func (o *oauthbearerTokenProvider) Token() (*sarama.AccessToken, error) {
 	var accessToken string
 	var err error
-	currentTime := time.Now()
-	ctx := context.Background()
 
-	if o.token != "" && currentTime.Before(o.tokenExpiration.Add(time.Duration(-2)*time.Second)) {
+	if o.token != "" && time.Now().Before(o.tokenExpiration.Add(time.Duration(-2)*time.Second)) {
 		accessToken = o.token
 		err = nil
 	} else {
-		token, _err := o.oauth2Config.Token(ctx)
-		err = _err
+		token, err := o.oauth2Config.Token(context.Background())
 		if err == nil {
 			accessToken = token.AccessToken
 			o.token = token.AccessToken
