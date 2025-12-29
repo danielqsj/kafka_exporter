@@ -1,12 +1,13 @@
 module github.com/danielqsj/kafka_exporter
 
-go 1.24
+go 1.24.0
 
 require (
 	github.com/IBM/sarama v1.45.2
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/aws/aws-msk-iam-sasl-signer-go v1.0.0
 	github.com/krallistic/kazoo-go v0.0.0-20170526135507-a15279744f4e
+	github.com/panjf2000/ants/v2 v2.11.3
 	github.com/prometheus/client_golang v1.20.0
 	github.com/prometheus/common v0.55.0
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
@@ -57,6 +58,7 @@ require (
 	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect
 	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/net v0.40.0 // indirect
+	golang.org/x/sync v0.14.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.25.0 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
