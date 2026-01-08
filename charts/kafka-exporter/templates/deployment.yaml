@@ -61,6 +61,7 @@ spec:
             - --sasl.username={{ .Values.kafkaExporter.sasl.username }}
             - --sasl.password={{ .Values.kafkaExporter.sasl.password }}
             - --sasl.mechanism={{ .Values.kafkaExporter.sasl.mechanism }}
+            - --sasl.oauthbearer-token-url={{ .Values.kafkaExporter.sasl.oauthbearerTokenUrl }}
             {{- end }}
             {{- if .Values.kafkaExporter.tls.enabled}}
             - --tls.enabled

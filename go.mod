@@ -1,6 +1,6 @@
 module github.com/danielqsj/kafka_exporter
 
-go 1.24
+go 1.24.0
 
 require (
 	github.com/IBM/sarama v1.45.2
@@ -11,6 +11,7 @@ require (
 	github.com/prometheus/common v0.55.0
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	github.com/xdg-go/scram v1.1.2
+	golang.org/x/oauth2 v0.32.0
 	k8s.io/klog/v2 v2.130.1
 )
 

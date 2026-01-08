@@ -23,6 +23,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	plog "github.com/prometheus/common/promlog"
 	plogflag "github.com/prometheus/common/promlog/flag"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 
 	versionCollector "github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/version"
@@ -91,6 +93,7 @@ type kafkaOpts struct {
 	saslMechanism            string
 	saslDisablePAFXFast      bool
 	saslAwsRegion            string
+	saslOAuthBearerTokenUrl  string
 	useTLS                   bool
 	tlsServerName            string
 	tlsCAFile                string
@@ -126,6 +129,43 @@ type MSKAccessTokenProvider struct {
 func (m *MSKAccessTokenProvider) Token() (*sarama.AccessToken, error) {
 	token, _, err := signer.GenerateAuthToken(context.TODO(), m.region)
 	return &sarama.AccessToken{Token: token}, err
+}
+
+type OAuth2Config interface {
+	Token(ctx context.Context) (*oauth2.Token, error)
+}
+
+type oauthbearerTokenProvider struct {
+	tokenExpiration time.Time
+	token           string
+	oauth2Config    OAuth2Config
+}
+
+func newOauthbearerTokenProvider(oauth2Config OAuth2Config) *oauthbearerTokenProvider {
+	return &oauthbearerTokenProvider{
+		tokenExpiration: time.Time{},
+		token:           "",
+		oauth2Config:    oauth2Config,
+	}
+}
+
+func (o *oauthbearerTokenProvider) Token() (*sarama.AccessToken, error) {
+	var accessToken string
+	var err error
+
+	if o.token != "" && time.Now().Before(o.tokenExpiration.Add(time.Duration(-2)*time.Second)) {
+		accessToken = o.token
+		err = nil
+	} else {
+		token, err := o.oauth2Config.Token(context.Background())
+		if err == nil {
+			accessToken = token.AccessToken
+			o.token = token.AccessToken
+			o.tokenExpiration = token.Expiry
+		}
+	}
+
+	return &sarama.AccessToken{Token: accessToken}, err
 }
 
 // CanReadCertAndKey returns true if the certificate and key files already exists,
@@ -208,6 +248,25 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 		case "awsiam":
 			config.Net.SASL.Mechanism = sarama.SASLMechanism(sarama.SASLTypeOAuth)
 			config.Net.SASL.TokenProvider = &MSKAccessTokenProvider{region: opts.saslAwsRegion}
+		case "oauthbearer":
+			config.Net.SASL.Mechanism = sarama.SASLMechanism(sarama.SASLTypeOAuth)
+			tokenUrl := opts.saslOAuthBearerTokenUrl
+			if tokenUrl == "" {
+				tokenUrl = os.Getenv("SASL_OAUTHBEARER_TOKEN_URL")
+			}
+			if tokenUrl == "" {
+				log.Fatalf("[ERROR] sasl.oauthbearer-token-url must be configured or SASL_OAUTHBEARER_TOKEN_URL environment variable must be set when using the OAuthBearer SASL mechanism")
+			}
+			saslUsername := opts.saslUsername
+			if saslUsername == "" {
+				log.Fatalf("[ERROR] sasl.username must be configured when using the OAuthBearer SASL mechanism")
+			}
+			oauth2Config := clientcredentials.Config{
+				TokenURL:     tokenUrl,
+				ClientID:     saslUsername,
+				ClientSecret: saslPassword,
+			}
+			config.Net.SASL.TokenProvider = newOauthbearerTokenProvider(&oauth2Config)
 		case "plain":
 		default:
 			return nil, fmt.Errorf(
@@ -773,7 +832,8 @@ func main() {
 	toFlagStringVar("sasl.username", "SASL user name.", "", &opts.saslUsername)
 	toFlagStringVar("sasl.password", "SASL user password.", "", &opts.saslPassword)
 	toFlagStringVar("sasl.aws-region", "The AWS region for IAM SASL authentication", os.Getenv("AWS_REGION"), &opts.saslAwsRegion)
-	toFlagStringVar("sasl.mechanism", "SASL SCRAM SHA algorithm: sha256 or sha512 or SASL mechanism: gssapi or awsiam", "", &opts.saslMechanism)
+	toFlagStringVar("sasl.oauthbearer-token-url", "The url to retrieve OAuthBearer tokens from, for OAuthBearer SASL authentication", "", &opts.saslOAuthBearerTokenUrl)
+	toFlagStringVar("sasl.mechanism", "SASL SCRAM SHA algorithm: sha256 or sha512 or SASL mechanism: gssapi, awsiam or oauthbearer", "", &opts.saslMechanism)
 	toFlagStringVar("sasl.service-name", "Service name when using kerberos Auth", "", &opts.serviceName)
 	toFlagStringVar("sasl.kerberos-config-path", "Kerberos config path", "", &opts.kerberosConfigPath)
 	toFlagStringVar("sasl.realm", "Kerberos realm", "", &opts.realm)

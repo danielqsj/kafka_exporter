@@ -28,6 +28,7 @@ kafkaExporter:
     username: ""
     password: ""
     mechanism: ""
+    oauthbearerTokenUrl: ""
 
   tls:
     enabled: false
