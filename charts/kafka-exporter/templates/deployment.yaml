@@ -32,7 +32,7 @@ spec:
               "metrics": {{ .Values.datadog.metrics | toJson | nindent 16 -}}
             }
            ]
-      {{- end }}    
+      {{- end }}
       labels:
         app.kubernetes.io/name: {{ include "kafka-exporter.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
@@ -44,6 +44,11 @@ spec:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.kafkaExporter.sasl.existingSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.kafkaExporter.sasl.existingSecret }}
+          {{- end }}
           args:
             {{- if .Values.kafkaExporter}}
             {{- range .Values.kafkaExporter.kafka.servers }}
@@ -59,7 +64,9 @@ spec:
             - --sasl.handshake=false
             {{- end }}
             - --sasl.username={{ .Values.kafkaExporter.sasl.username }}
+            {{- if eq .Values.kafkaExporter.sasl.existingSecret "" }}
             - --sasl.password={{ .Values.kafkaExporter.sasl.password }}
+            {{- end }}
             - --sasl.mechanism={{ .Values.kafkaExporter.sasl.mechanism }}
             - --sasl.oauthbearer-token-url={{ .Values.kafkaExporter.sasl.oauthbearerTokenUrl }}
             {{- end }}
