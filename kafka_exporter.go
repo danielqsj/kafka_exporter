@@ -19,6 +19,7 @@ import (
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/aws/aws-msk-iam-sasl-signer-go/signer"
 	"github.com/krallistic/kazoo-go"
+	"github.com/panjf2000/ants/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	plog "github.com/prometheus/common/promlog"
@@ -77,11 +78,13 @@ type Exporter struct {
 	metadataRefreshInterval time.Duration
 	offsetShowAll           bool
 	topicWorkers            int
+	groupWorkers            int
 	allowConcurrent         bool
 	sgMutex                 sync.Mutex
 	sgWaitCh                chan struct{}
 	sgChans                 []chan<- prometheus.Metric
 	consumerGroupFetchAll   bool
+	groupMetricsTimeout     time.Duration
 }
 
 type kafkaOpts struct {
@@ -117,9 +120,11 @@ type kafkaOpts struct {
 	kerberosAuthType         string
 	offsetShowAll            bool
 	topicWorkers             int
+	groupWorkers             int
 	allowConcurrent          bool
 	allowAutoTopicCreation   bool
 	verbosityLogLevel        int
+	groupMetricsTimeout      string
 }
 
 type MSKAccessTokenProvider struct {
@@ -326,6 +331,11 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 		}
 	}
 
+	groupMetricsTimeout, err := time.ParseDuration(opts.groupMetricsTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot parse group metrics timeout: %w", err)
+	}
+
 	interval, err := time.ParseDuration(opts.metadataRefreshInterval)
 	if err != nil {
 		return nil, fmt.Errorf("Cannot parse metadata refresh interval: %w", err)
@@ -354,11 +364,13 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 		metadataRefreshInterval: interval,
 		offsetShowAll:           opts.offsetShowAll,
 		topicWorkers:            opts.topicWorkers,
+		groupWorkers:            opts.groupWorkers,
 		allowConcurrent:         opts.allowConcurrent,
 		sgMutex:                 sync.Mutex{},
 		sgWaitCh:                nil,
 		sgChans:                 []chan<- prometheus.Metric{},
 		consumerGroupFetchAll:   config.Version.IsAtLeast(sarama.V2_0_0_0),
+		groupMetricsTimeout:     groupMetricsTimeout,
 	}, nil
 }
 
@@ -465,15 +477,19 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			klog.Errorf("Cannot refresh topics, using cached data: %v", err)
 		}
 
+		klog.V(DEBUG).Infof("Took %v to refresh metadata", time.Since(now))
 		e.nextMetadataRefresh = now.Add(e.metadataRefreshInterval)
 	}
 
+	now = time.Now()
 	topics, err := e.client.Topics()
 	if err != nil {
 		klog.Errorf("Cannot get topics: %v", err)
 		return
 	}
 
+	klog.V(DEBUG).Infof("Took %v to get topics", time.Since(now))
+	klog.V(DEBUG).Infof("Found %v topics", len(topics))
 	topicChannel := make(chan string)
 
 	getTopicMetrics := func(topic string) {
@@ -619,15 +635,22 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	}
 	close(topicChannel)
 
+	now = time.Now()
 	wg.Wait()
+	klog.V(DEBUG).Infof("Took %v to get topic metrics", time.Since(now))
 
+	pool, err := ants.NewPool(e.groupWorkers)
+	if err != nil {
+		klog.Errorf("Cannot create pool: %v", err)
+		return
+	}
+	// Defer pool release here in case function exits early due to error.
+	// Even though we do another release below, this is fine (double release is a no-op).
+	defer pool.Release()
+
+	// broker should be opened before calling this function
 	getConsumerGroupMetrics := func(broker *sarama.Broker) {
 		defer wg.Done()
-		if err := broker.Open(e.client.Config()); err != nil && err != sarama.ErrAlreadyConnected {
-			klog.Errorf("Cannot connect to broker %d: %v", broker.ID(), err)
-			return
-		}
-		defer broker.Close()
 
 		groups, err := broker.ListGroups(&sarama.ListGroupsRequest{})
 		if err != nil {
@@ -651,97 +674,13 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 				klog.Errorf("Cannot describe for the group %s with error code %d", group.GroupId, group.Err)
 				continue
 			}
-			offsetFetchRequest := sarama.OffsetFetchRequest{ConsumerGroup: group.GroupId, Version: e.fetchOffsetVersion()}
-			if e.offsetShowAll {
-				for topic, partitions := range offset {
-					for partition := range partitions {
-						offsetFetchRequest.AddPartition(topic, partition)
-					}
-				}
-			} else {
-				for _, member := range group.Members {
-					if len(member.MemberAssignment) == 0 {
-						klog.Warningf("MemberAssignment is empty for group member: %v in group: %v", member.MemberId, group.GroupId)
-						continue
-					}
-					assignment, err := member.GetMemberAssignment()
-					if err != nil {
-						klog.Errorf("Cannot get GetMemberAssignment of group member %v : %v", member, err)
-						continue
-					}
-					for topic, partions := range assignment.Topics {
-						for _, partition := range partions {
-							offsetFetchRequest.AddPartition(topic, partition)
-						}
-					}
-				}
-			}
-			ch <- prometheus.MustNewConstMetric(
-				consumergroupMembers, prometheus.GaugeValue, float64(len(group.Members)), group.GroupId,
-			)
-			offsetFetchResponse, err := broker.FetchOffset(&offsetFetchRequest)
+
+			err := pool.Submit(func() {
+				e.emitGroupMetrics(group, broker, offset, ch)
+			})
 			if err != nil {
-				klog.Errorf("Cannot get offset of group %s: %v", group.GroupId, err)
-				continue
-			}
-
-			for topic, partitions := range offsetFetchResponse.Blocks {
-				// If the topic is not consumed by that consumer group, skip it
-				topicConsumed := false
-				for _, offsetFetchResponseBlock := range partitions {
-					// Kafka will return -1 if there is no offset associated with a topic-partition under that consumer group
-					if offsetFetchResponseBlock.Offset != -1 {
-						topicConsumed = true
-						break
-					}
-				}
-				if !topicConsumed {
-					continue
-				}
-
-				var currentOffsetSum int64
-				var lagSum int64
-				for partition, offsetFetchResponseBlock := range partitions {
-					err := offsetFetchResponseBlock.Err
-					if err != sarama.ErrNoError {
-						klog.Errorf("Error for  partition %d :%v", partition, err.Error())
-						continue
-					}
-					currentOffset := offsetFetchResponseBlock.Offset
-					currentOffsetSum += currentOffset
-					ch <- prometheus.MustNewConstMetric(
-						consumergroupCurrentOffset, prometheus.GaugeValue, float64(currentOffset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
-					)
-					e.mu.Lock()
-					currentPartitionOffset, currentPartitionOffsetError := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
-					if currentPartitionOffsetError != nil {
-						klog.Errorf("Cannot get current offset of topic %s partition %d: %v", topic, partition, currentPartitionOffsetError)
-					} else {
-						var lag int64
-						if offsetFetchResponseBlock.Offset == -1 {
-							lag = -1
-						} else {
-							if offset, ok := offset[topic][partition]; ok {
-								if currentPartitionOffset == -1 {
-									currentPartitionOffset = offset
-								}
-							}
-							lag = currentPartitionOffset - offsetFetchResponseBlock.Offset
-							lagSum += lag
-						}
-
-						ch <- prometheus.MustNewConstMetric(
-							consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
-						)
-					}
-					e.mu.Unlock()
-				}
-				ch <- prometheus.MustNewConstMetric(
-					consumergroupCurrentOffsetSum, prometheus.GaugeValue, float64(currentOffsetSum), group.GroupId, topic,
-				)
-				ch <- prometheus.MustNewConstMetric(
-					consumergroupLagSum, prometheus.GaugeValue, float64(lagSum), group.GroupId, topic,
-				)
+				klog.Errorf("Cannot submit task to pool: %v", err)
+				return
 			}
 		}
 	}
@@ -766,9 +705,118 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 				}
 			}
 		}
+		now = time.Now()
 		wg.Wait()
+		err = pool.ReleaseTimeout(e.groupMetricsTimeout)
+		if err != nil {
+			klog.Errorf("Failed to release pool: %v", err)
+		}
+
+		klog.V(DEBUG).Infof("Took %v to get consumer group metrics", time.Since(now))
 	} else {
 		klog.Errorln("No valid broker, cannot get consumer group metrics")
+	}
+}
+
+func (e *Exporter) emitGroupMetrics(group *sarama.GroupDescription, broker *sarama.Broker, offsetMap map[string]map[int32]int64, ch chan<- prometheus.Metric) {
+	offsetFetchRequest := sarama.OffsetFetchRequest{ConsumerGroup: group.GroupId, Version: e.fetchOffsetVersion()}
+	if e.offsetShowAll {
+		for topic, partitions := range offsetMap {
+			for partition := range partitions {
+				offsetFetchRequest.AddPartition(topic, partition)
+			}
+		}
+	} else {
+		for _, member := range group.Members {
+			if len(member.MemberAssignment) == 0 {
+				klog.Warningf("MemberAssignment is empty for group member: %v in group: %v", member.MemberId, group.GroupId)
+				continue
+			}
+			assignment, err := member.GetMemberAssignment()
+			if err != nil {
+				klog.Errorf("Cannot get GetMemberAssignment of group member %v : %v", member, err)
+				continue
+			}
+			for topic, partions := range assignment.Topics {
+				for _, partition := range partions {
+					offsetFetchRequest.AddPartition(topic, partition)
+				}
+			}
+		}
+	}
+	ch <- prometheus.MustNewConstMetric(
+		consumergroupMembers, prometheus.GaugeValue, float64(len(group.Members)), group.GroupId,
+	)
+	// make a copy of the broker since each broker object does not support concurrent requests
+	brokerCopy := sarama.NewBroker(broker.Addr())
+	if err := brokerCopy.Open(e.client.Config()); err != nil {
+		klog.Errorf("Cannot connect to broker %s: %v", brokerCopy.Addr(), err)
+		return
+	}
+	defer brokerCopy.Close()
+	offsetFetchResponse, err := brokerCopy.FetchOffset(&offsetFetchRequest)
+	if err != nil {
+		klog.Errorf("Cannot get offset of group %s: %v", group.GroupId, err)
+		return
+	}
+
+	for topic, partitions := range offsetFetchResponse.Blocks {
+		// If the topic is not consumed by that consumer group, skip it
+		topicConsumed := false
+		for _, offsetFetchResponseBlock := range partitions {
+			// Kafka will return -1 if there is no offset associated with a topic-partition under that consumer group
+			if offsetFetchResponseBlock.Offset != -1 {
+				topicConsumed = true
+				break
+			}
+		}
+		if !topicConsumed {
+			continue
+		}
+
+		var currentOffsetSum int64
+		var lagSum int64
+		for partition, offsetFetchResponseBlock := range partitions {
+			err := offsetFetchResponseBlock.Err
+			if err != sarama.ErrNoError {
+				klog.Errorf("Error for  partition %d :%v", partition, err.Error())
+				continue
+			}
+			currentOffset := offsetFetchResponseBlock.Offset
+			currentOffsetSum += currentOffset
+			ch <- prometheus.MustNewConstMetric(
+				consumergroupCurrentOffset, prometheus.GaugeValue, float64(currentOffset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
+			)
+			currentPartitionOffset, currentPartitionOffsetError := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
+			if currentPartitionOffsetError != nil {
+				klog.Errorf("Cannot get current offset of topic %s partition %d: %v", topic, partition, currentPartitionOffsetError)
+			} else {
+				var lag int64
+				if offsetFetchResponseBlock.Offset == -1 {
+					lag = -1
+				} else {
+					// writes to the offset map are only performed in getTopicMetrics(), which is guaranteed to be done before this point
+					// no mutex required for concurrent reads
+					if offset, ok := offsetMap[topic][partition]; ok {
+						if currentPartitionOffset == -1 {
+							currentPartitionOffset = offset
+						}
+					}
+					lag = currentPartitionOffset - offsetFetchResponseBlock.Offset
+					lagSum += lag
+				}
+
+				ch <- prometheus.MustNewConstMetric(
+					consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
+				)
+			}
+		}
+		ch <- prometheus.MustNewConstMetric(
+			consumergroupCurrentOffsetSum, prometheus.GaugeValue, float64(currentOffsetSum), group.GroupId, topic,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			consumergroupLagSum, prometheus.GaugeValue, float64(lagSum), group.GroupId, topic,
+		)
 	}
 }
 
@@ -859,8 +907,10 @@ func main() {
 	toFlagBoolVar("offset.show-all", "Whether show the offset/lag for all consumer group, otherwise, only show connected consumer groups, default is true", true, "true", &opts.offsetShowAll)
 	toFlagBoolVar("concurrent.enable", "If true, all scrapes will trigger kafka operations otherwise, they will share results. WARN: This should be disabled on large clusters. Default is false", false, "false", &opts.allowConcurrent)
 	toFlagIntVar("topic.workers", "Number of topic workers", 100, "100", &opts.topicWorkers)
+	toFlagIntVar("group.workers", "Number of consumer group workers", 100, "100", &opts.groupWorkers)
 	toFlagBoolVar("kafka.allow-auto-topic-creation", "If true, the broker may auto-create topics that we requested which do not already exist, default is false.", false, "false", &opts.allowAutoTopicCreation)
 	toFlagIntVar("verbosity", "Verbosity log level", 0, "0", &opts.verbosityLogLevel)
+	toFlagStringVar("group.metrics.timeout", "Timeout for emitting consumer group metrics", "5m", &opts.groupMetricsTimeout)
 
 	plConfig := plog.Config{}
 	plogflag.AddFlags(kingpin.CommandLine, &plConfig)
