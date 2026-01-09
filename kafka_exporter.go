@@ -616,9 +616,13 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 				continue
 			}
 
-			pool.Submit(func() {
+			err := pool.Submit(func() {
 				e.emitGroupMetrics(group, broker, offset, ch)
 			})
+			if err != nil {
+				klog.Errorf("Cannot submit task to pool: %v", err)
+				return
+			}
 		}
 	}
 
