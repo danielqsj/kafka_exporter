@@ -49,6 +49,12 @@ spec:
             {{- range .Values.kafkaExporter.kafka.servers }}
             - "--kafka.server={{ . }}"
             {{- end }}
+            {{- range .Values.kafkaExporter.zookeeper.servers }}
+            - "--zookeeper.server={{ . }}"
+            {{- end }}
+            {{- range .Values.kafkaExporter.additionalFlags }}
+            - "{{ . }}"
+            {{- end }}
             {{- if .Values.kafkaExporter.kafka.version }}
             - --kafka.version={{ .Values.kafkaExporter.kafka.version }}
             {{- end }}
