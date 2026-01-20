@@ -49,6 +49,7 @@ var (
 	topicPartitions                    *prometheus.Desc
 	topicCurrentOffset                 *prometheus.Desc
 	topicOldestOffset                  *prometheus.Desc
+	topicPartitionSize                 *prometheus.Desc
 	topicPartitionLeader               *prometheus.Desc
 	topicPartitionReplicas             *prometheus.Desc
 	topicPartitionInSyncReplicas       *prometheus.Desc
@@ -381,6 +382,7 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- topicCurrentOffset
 	ch <- topicOldestOffset
 	ch <- topicPartitions
+        ch <- topicPartitionSize
 	ch <- topicPartitionLeader
 	ch <- topicPartitionReplicas
 	ch <- topicPartitionInSyncReplicas
@@ -491,6 +493,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(
 			topicPartitions, prometheus.GaugeValue, float64(len(partitions)), topic,
 		)
+
 		e.mu.Lock()
 		offset[topic] = make(map[int32]int64, len(partitions))
 		e.mu.Unlock()
@@ -503,6 +506,23 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 					topicPartitionLeader, prometheus.GaugeValue, float64(broker.ID()), topic, strconv.FormatInt(int64(partition), 10),
 				)
 			}
+
+            if err := broker.Open(e.client.Config()); err != nil && err != sarama.ErrAlreadyConnected {
+                glog.Errorf("Error open Kafka broker: %v", err)
+            }
+            describeLogDirs, err := broker.DescribeLogDirs(&sarama.DescribeLogDirsRequest{1, []sarama.DescribeLogDirsRequestTopic{{string(topic), []int32{int32(partition)}}}})
+            if err != nil {
+                glog.Errorf("Error describe log dirs: %v", err)
+            }
+            for _, logDir := range describeLogDirs.LogDirs {
+                for _, topic4size := range logDir.Topics {
+                    for _, partition4size := range topic4size.Partitions {
+                        ch <- prometheus.MustNewConstMetric(
+                            topicPartitionSize, prometheus.GaugeValue, float64(partition4size.Size), topic, strconv.FormatInt(int64(partition), 10),
+                        )
+                    }
+                }
+            }
 
 			currentOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
 			if err != nil {
@@ -669,7 +689,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 						klog.Errorf("Cannot get GetMemberAssignment of group member %v : %v", member, err)
 						continue
 					}
-					for topic, partions := range assignment.Topics {
+				for topic, partions := range assignment.Topics {
 						for _, partition := range partions {
 							offsetFetchRequest.AddPartition(topic, partition)
 						}
@@ -942,6 +962,12 @@ func setup(
 	topicPartitionReplicas = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "topic", "partition_replicas"),
 		"Number of Replicas for this Topic/Partition",
+		[]string{"topic", "partition"}, labels,
+	)
+
+	topicPartitionSize = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "topic", "partition_size"),
+		"Size for this Topic Partition",
 		[]string{"topic", "partition"}, labels,
 	)
 
