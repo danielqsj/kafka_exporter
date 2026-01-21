@@ -52,6 +52,7 @@ prometheus:
 
 labels: {}
 podLabels: {}
+podAnnotations: {}
 
 # Adds in Datadog annotations needed to scrape the prometheus endpoint.
 # prefix is required. If added, will provide a metric such as test.kafka_brokers.
