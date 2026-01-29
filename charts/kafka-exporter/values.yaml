@@ -29,6 +29,7 @@ kafkaExporter:
     password: ""
     mechanism: ""
     oauthbearerTokenUrl: ""
+    oauthbearerScopes: ""
 
   tls:
     enabled: false

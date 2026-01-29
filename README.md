@@ -118,6 +118,7 @@ This image is configurable using different flags
 | sasl.mechanism                 | plain          | SASL SCRAM SHA algorithm: sha256 or sha512 or SASL mechanism: gssapi, awsiam or oauthbearer                                                    |
 | sasl.aws-region                | AWS_REGION env | The AWS region for IAM SASL authentication                                                                                                     |
 | sasl.oauthbearer-token-url     |                | The url to retrieve OAuthBearer tokens from, for OAuthBearer SASL authentication                                                               |
+| sasl.oauthbearer-scopes        |                | The comma-separated scopes to use for OAuthBearer SASL authentication authentication                                                               |
 | sasl.service-name              |                | Service name when using Kerberos Auth                                                                                                          |
 | sasl.kerberos-config-path      |                | Kerberos config path                                                                                                                           |
 | sasl.realm                     |                | Kerberos realm                                                                                                                                 |

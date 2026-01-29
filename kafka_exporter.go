@@ -94,6 +94,7 @@ type kafkaOpts struct {
 	saslDisablePAFXFast      bool
 	saslAwsRegion            string
 	saslOAuthBearerTokenUrl  string
+	saslOAuthBearerScopes    string
 	useTLS                   bool
 	tlsServerName            string
 	tlsCAFile                string
@@ -265,6 +266,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 				TokenURL:     tokenUrl,
 				ClientID:     saslUsername,
 				ClientSecret: saslPassword,
+				Scopes:       strings.Split(opts.saslOAuthBearerScopes, ","),
 			}
 			config.Net.SASL.TokenProvider = newOauthbearerTokenProvider(&oauth2Config)
 		case "plain":
@@ -833,6 +835,7 @@ func main() {
 	toFlagStringVar("sasl.password", "SASL user password.", "", &opts.saslPassword)
 	toFlagStringVar("sasl.aws-region", "The AWS region for IAM SASL authentication", os.Getenv("AWS_REGION"), &opts.saslAwsRegion)
 	toFlagStringVar("sasl.oauthbearer-token-url", "The url to retrieve OAuthBearer tokens from, for OAuthBearer SASL authentication", "", &opts.saslOAuthBearerTokenUrl)
+	toFlagStringVar("sasl.oauthbearer-scopes", "The comma-separated scopes to use for OAuthBearer SASL authentication", "", &opts.saslOAuthBearerScopes)
 	toFlagStringVar("sasl.mechanism", "SASL SCRAM SHA algorithm: sha256 or sha512 or SASL mechanism: gssapi, awsiam or oauthbearer", "", &opts.saslMechanism)
 	toFlagStringVar("sasl.service-name", "Service name when using kerberos Auth", "", &opts.serviceName)
 	toFlagStringVar("sasl.kerberos-config-path", "Kerberos config path", "", &opts.kerberosConfigPath)
