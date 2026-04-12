@@ -45,7 +45,7 @@ build: promu
 
 crossbuild: promu
 	@echo ">> crossbuilding binaries"
-	@$(PROMU) crossbuild --go=1.23
+	@$(PROMU) crossbuild --go=1.24
 
 tarball: promu
 	@echo ">> building release tarball"
