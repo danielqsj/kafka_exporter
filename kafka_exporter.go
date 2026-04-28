@@ -785,7 +785,9 @@ func (e *Exporter) emitGroupMetrics(group *sarama.GroupDescription, broker *sara
 				continue
 			}
 			currentOffset := offsetFetchResponseBlock.Offset
-			currentOffsetSum += currentOffset
+			if currentOffset != -1 {
+				currentOffsetSum += currentOffset
+			}
 			ch <- prometheus.MustNewConstMetric(
 				consumergroupCurrentOffset, prometheus.GaugeValue, float64(currentOffset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
 			)
