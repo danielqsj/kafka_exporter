@@ -23,8 +23,8 @@ import (
 	"github.com/panjf2000/ants/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	plog "github.com/prometheus/common/promlog"
-	plogflag "github.com/prometheus/common/promlog/flag"
+	plog "github.com/prometheus/common/promslog"
+	plogflag "github.com/prometheus/common/promslog/flag"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 
