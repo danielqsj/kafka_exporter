@@ -1,6 +1,6 @@
 module github.com/danielqsj/kafka_exporter
 
-go 1.26.0
+go 1.26.3
 
 require (
 	github.com/IBM/sarama v1.47.0

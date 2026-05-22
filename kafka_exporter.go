@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -85,6 +86,14 @@ type Exporter struct {
 	sgChans                 []chan<- prometheus.Metric
 	consumerGroupFetchAll   bool
 	groupMetricsTimeout     time.Duration
+	knownBrokersMu          sync.Mutex
+	knownBrokers            map[int32]string
+}
+
+type brokerInfoMetric struct {
+	id      int32
+	address string
+	value   float64
 }
 
 type kafkaOpts struct {
@@ -373,16 +382,18 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 		sgChans:                 []chan<- prometheus.Metric{},
 		consumerGroupFetchAll:   config.Version.IsAtLeast(sarama.V2_0_0_0),
 		groupMetricsTimeout:     groupMetricsTimeout,
+		knownBrokersMu:          sync.Mutex{},
+		knownBrokers:            make(map[int32]string),
 	}, nil
 }
 
 func (e *Exporter) fetchOffsetVersion() int16 {
-	version := e.client.Config().Version
+	_version := e.client.Config().Version
 	if e.client.Config().Version.IsAtLeast(sarama.V2_0_0_0) {
 		return 4
-	} else if version.IsAtLeast(sarama.V0_10_2_0) {
+	} else if _version.IsAtLeast(sarama.V0_10_2_0) {
 		return 2
-	} else if version.IsAtLeast(sarama.V0_8_2_2) {
+	} else if _version.IsAtLeast(sarama.V0_8_2_2) {
 		return 1
 	}
 	return 0
@@ -459,12 +470,13 @@ func (e *Exporter) collectChans(quit chan struct{}) {
 
 func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	wg := sync.WaitGroup{}
+	brokers := e.client.Brokers()
 	ch <- prometheus.MustNewConstMetric(
-		clusterBrokers, prometheus.GaugeValue, float64(len(e.client.Brokers())),
+		clusterBrokers, prometheus.GaugeValue, float64(len(brokers)),
 	)
-	for _, b := range e.client.Brokers() {
+	for _, broker := range e.brokerInfoMetrics(brokers) {
 		ch <- prometheus.MustNewConstMetric(
-			clusterBrokerInfo, prometheus.GaugeValue, 1, strconv.Itoa(int(b.ID())), b.Addr(),
+			clusterBrokerInfo, prometheus.GaugeValue, broker.value, strconv.Itoa(int(broker.id)), broker.address,
 		)
 	}
 
@@ -718,6 +730,45 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	} else {
 		klog.Errorln("No valid broker, cannot get consumer group metrics")
 	}
+}
+
+func (e *Exporter) brokerInfoMetrics(brokers []*sarama.Broker) []brokerInfoMetric {
+	currentBrokers := make(map[int32]string, len(brokers))
+	for _, broker := range brokers {
+		currentBrokers[broker.ID()] = broker.Addr()
+	}
+
+	e.knownBrokersMu.Lock()
+	defer e.knownBrokersMu.Unlock()
+
+	if e.knownBrokers == nil {
+		e.knownBrokers = make(map[int32]string)
+	}
+	for id, address := range currentBrokers {
+		e.knownBrokers[id] = address
+	}
+
+	_metrics := make([]brokerInfoMetric, 0, len(e.knownBrokers))
+	for id, address := range e.knownBrokers {
+		value := 0.0
+		if _, ok := currentBrokers[id]; ok {
+			value = 1
+		}
+		_metrics = append(_metrics, brokerInfoMetric{
+			id:      id,
+			address: address,
+			value:   value,
+		})
+	}
+
+	sort.Slice(_metrics, func(i, j int) bool {
+		if _metrics[i].id == _metrics[j].id {
+			return _metrics[i].address < _metrics[j].address
+		}
+		return _metrics[i].id < _metrics[j].id
+	})
+
+	return _metrics
 }
 
 func (e *Exporter) emitGroupMetrics(group *sarama.GroupDescription, broker *sarama.Broker, offsetMap map[string]map[int32]int64, ch chan<- prometheus.Metric) {
