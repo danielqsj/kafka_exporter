@@ -435,13 +435,18 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 func (e *Exporter) collectChans(quit chan struct{}) {
 	original := make(chan prometheus.Metric)
 	container := make([]prometheus.Metric, 0, 100)
+	drained := make(chan struct{})
 	go func() {
+		defer close(drained)
 		for metric := range original {
 			container = append(container, metric)
 		}
 	}()
 	e.collect(original)
 	close(original)
+	// wait for the appender to finish: a send on original returns before the receiver has
+	// appended it, so reading container without this drops the last metrics of the scrape
+	<-drained
 	// Lock to avoid modification on the channel slice
 	e.sgMutex.Lock()
 	for _, ch := range e.sgChans {
