@@ -108,6 +108,9 @@ type kafkaOpts struct {
 	serverTlsCAFile          string
 	serverTlsCertFile        string
 	serverTlsKeyFile         string
+	serverTlsMinVersion      string
+	serverTlsMaxVersion      string
+	serverTlsCipherSuites    string
 	tlsInsecureSkipTLSVerify bool
 	kafkaVersion             string
 	useZooKeeperLag          bool
@@ -863,6 +866,112 @@ func toFlagIntVar(name string, help string, value int, valueString string, targe
 	kingpin.Flag(name, help).Default(valueString).IntVar(target)
 }
 
+func parseTLSVersion(version string) (uint16, error) {
+	switch strings.ToUpper(strings.TrimSpace(version)) {
+	case "TLSV1.2":
+		return tls.VersionTLS12, nil
+	case "TLSV1.3":
+		return tls.VersionTLS13, nil
+	default:
+		return 0, fmt.Errorf("unsupported TLS version %q, supported versions are TLSv1.2 and TLSv1.3", version)
+	}
+}
+
+func parseTLSCipherSuites(value string) ([]uint16, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, nil
+	}
+
+	cipherSuites := make(map[string]uint16)
+
+	for _, suite := range tls.CipherSuites() {
+		cipherSuites[suite.Name] = suite.ID
+	}
+
+	for _, suite := range tls.InsecureCipherSuites() {
+		cipherSuites[suite.Name] = suite.ID
+	}
+
+	seen := make(map[string]struct{})
+	result := make([]uint16, 0)
+
+	for _, name := range strings.Split(value, ",") {
+		name = strings.ToUpper(strings.TrimSpace(name))
+
+		if name == "" {
+			continue
+		}
+
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		seen[name] = struct{}{}
+
+		id, ok := cipherSuites[name]
+		if !ok {
+			return nil, fmt.Errorf("unsupported TLS cipher suite %q", name)
+		}
+		result = append(result, id)
+	}
+
+	if len(result) == 0 {
+		return nil, fmt.Errorf("TLS cipher suites list is empty")
+	}
+
+	return result, nil
+}
+
+func buildServerTLSConfig(opts kafkaOpts, certPool *x509.CertPool, clientAuthType tls.ClientAuthType) (*tls.Config, error) {
+	tlsConfig := &tls.Config{
+		ClientCAs:        certPool,
+		ClientAuth:       clientAuthType,
+		MinVersion:       tls.VersionTLS12,
+		CurvePreferences: []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
+		CipherSuites: []uint16{
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
+			tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+			tls.TLS_RSA_WITH_AES_128_CBC_SHA256,
+		},
+	}
+
+	if opts.serverTlsMinVersion != "" {
+		minVersion, err := parseTLSVersion(opts.serverTlsMinVersion)
+		if err != nil {
+			return nil, fmt.Errorf("invalid server.tls.min-version: %w", err)
+		}
+
+		tlsConfig.MinVersion = minVersion
+	}
+
+	if opts.serverTlsMaxVersion != "" {
+		maxVersion, err := parseTLSVersion(opts.serverTlsMaxVersion)
+		if err != nil {
+			return nil, fmt.Errorf("invalid server.tls.max-version: %w", err)
+		}
+
+		tlsConfig.MaxVersion = maxVersion
+	}
+
+	if tlsConfig.MaxVersion != 0 && tlsConfig.MinVersion > tlsConfig.MaxVersion {
+		return nil, fmt.Errorf("server.tls.min-version cannot be greater than server.tls.max-version")
+	}
+
+	if opts.serverTlsCipherSuites != "" {
+		cipherSuites, err := parseTLSCipherSuites(opts.serverTlsCipherSuites)
+		if err != nil {
+			return nil, fmt.Errorf("invalid server.tls.cipher-suites: %w", err)
+		}
+
+		tlsConfig.CipherSuites = cipherSuites
+	}
+
+	return tlsConfig, nil
+}
+
 func main() {
 	var (
 		listenAddress = toFlagString("web.listen-address", "Address to listen on for web interface and telemetry.", ":9308")
@@ -901,6 +1010,9 @@ func main() {
 	toFlagStringVar("server.tls.ca-file", "The certificate authority file for the web server.", "", &opts.serverTlsCAFile)
 	toFlagStringVar("server.tls.cert-file", "The certificate file for the web server.", "", &opts.serverTlsCertFile)
 	toFlagStringVar("server.tls.key-file", "The key file for the web server.", "", &opts.serverTlsKeyFile)
+	toFlagStringVar("server.tls.min-version", "Minimum server TLS version.", "", &opts.serverTlsMinVersion)
+	toFlagStringVar("server.tls.max-version", "Maximum server TLS version.", "", &opts.serverTlsMaxVersion)
+	toFlagStringVar("server.tls.cipher-suites", "Comma-separated list of server TLS cipher suites.", "", &opts.serverTlsCipherSuites)
 	toFlagBoolVar("tls.insecure-skip-tls-verify", "If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure. Default is false", false, "false", &opts.tlsInsecureSkipTLSVerify)
 	toFlagStringVar("kafka.version", "Kafka broker version", sarama.V2_0_0_0.String(), &opts.kafkaVersion)
 	toFlagBoolVar("use.consumelag.zookeeper", "if you need to use a group from zookeeper, default is false", false, "false", &opts.useZooKeeperLag)
@@ -1108,21 +1220,11 @@ func setup(
 			}
 		}
 
-		tlsConfig := &tls.Config{
-			ClientCAs:        certPool,
-			ClientAuth:       clientAuthType,
-			MinVersion:       tls.VersionTLS12,
-			CurvePreferences: []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
-			CipherSuites: []uint16{
-				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-				tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-				tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
-				tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
-				tls.TLS_RSA_WITH_AES_256_CBC_SHA,
-				tls.TLS_RSA_WITH_AES_128_CBC_SHA256,
-			},
+		tlsConfig, err := buildServerTLSConfig(opts, certPool, clientAuthType)
+		if err != nil {
+			klog.Fatalln(err)
 		}
+
 		server := &http.Server{
 			Addr:      listenAddress,
 			Handler:   mux,
