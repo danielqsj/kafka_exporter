@@ -118,7 +118,7 @@ This image is configurable using different flags
 | sasl.mechanism                 | plain          | SASL SCRAM SHA algorithm: sha256 or sha512 or SASL mechanism: gssapi, awsiam or oauthbearer                                                    |
 | sasl.aws-region                | AWS_REGION env | The AWS region for IAM SASL authentication                                                                                                     |
 | sasl.oauthbearer-token-url     |                | The url to retrieve OAuthBearer tokens from, for OAuthBearer SASL authentication                                                               |
-| sasl.oauthbearer-scopes        |                | The comma-separated scopes to use for OAuthBearer SASL authentication authentication                                                               |
+| sasl.oauthbearer-scopes        |                | The comma-separated scopes to use for OAuthBearer SASL authentication authentication                                                           |
 | sasl.service-name              |                | Service name when using Kerberos Auth                                                                                                          |
 | sasl.kerberos-config-path      |                | Kerberos config path                                                                                                                           |
 | sasl.realm                     |                | Kerberos realm                                                                                                                                 |
@@ -135,6 +135,9 @@ This image is configurable using different flags
 | server.tls.ca-file             |                | The certificate authority file for the web server                                                                                              |
 | server.tls.cert-file           |                | The certificate file for the web server                                                                                                        |
 | server.tls.key-file            |                | The key file for the web server                                                                                                                |
+| server.tls.min-version         |                | Minimum server TLS version                                                                                                                     |
+| server.tls.max-version         |                | Maximum server TLS version                                                                                                                     |
+| server.tls.cipher-suites       |                | Comma-separated list of server TLS cipher suites                                                                                               |
 | topic.filter                   | .*             | Regex that determines which topics to collect                                                                                                  |
 | topic.exclude                  | ^$             | Regex that determines which topics to exclude                                                                                                  |
 | group.filter                   | .*             | Regex that determines which consumer groups to collect                                                                                         |
