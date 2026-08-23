@@ -36,6 +36,29 @@ func TestSmoke(t *testing.T) {
 	})
 }
 
+func TestBoundedWorkerCount(t *testing.T) {
+	tests := []struct {
+		name  string
+		total int
+		limit int
+		want  int
+	}{
+		{name: "no work", total: 0, limit: 100, want: 0},
+		{name: "zero limit uses all work", total: 3, limit: 0, want: 3},
+		{name: "negative limit uses all work", total: 3, limit: -1, want: 3},
+		{name: "limit above work caps at work", total: 3, limit: 100, want: 3},
+		{name: "limit below work is used", total: 10, limit: 4, want: 4},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := boundedWorkerCount(tt.total, tt.limit); got != tt.want {
+				t.Fatalf("boundedWorkerCount(%d, %d) = %d, want %d", tt.total, tt.limit, got, tt.want)
+			}
+		})
+	}
+}
+
 func assumeKafka() bool {
 	client, err := sarama.NewClient(bootstrap_servers, nil)
 	if err != nil {

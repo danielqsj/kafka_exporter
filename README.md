@@ -148,7 +148,8 @@ This image is configurable using different flags
 | refresh.metadata               | 30s            | Metadata refresh interval                                                                                                                      |
 | offset.show-all                | true           | Whether show the offset/lag for all consumer group, otherwise, only show connected consumer groups                                             |
 | concurrent.enable              | false          | If true, all scrapes will trigger kafka operations otherwise, they will share results. WARN: This should be disabled on large clusters         |
-| topic.workers                  | 100            | Number of topic workers                                                                                                                        |
+| topic.workers                  | 100            | Maximum number of concurrent broker offset fetch tasks; `<= 0` means no limit                                                                  |
+| group.workers                  | 100            | Maximum number of concurrent broker consumer group tasks; `<= 0` means no limit                                                                |
 | verbosity                      | 0              | Verbosity log level                                                                                                                            |
 
 ### Notes
