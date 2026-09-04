@@ -1,0 +1,23 @@
+---
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - misspell
+    - unconvert
+    - unparam
+    - unused
+  exclusions:
+    # Equivalent of the `issues.exclude-use-default` behaviour that golangci-lint
+    # v1 applied implicitly (EXC0001: unchecked errors on Close/Log/Print calls).
+    presets:
+      - std-error-handling
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

@@ -19,14 +19,17 @@ jobs:
       ## this will contain a matrix of all of the combinations
       ## we wish to test again:
       matrix:
-        go-version: [ 1.26.x ]
+        go-version: [ 1.27.x ]
         os: [ ubuntu-latest ]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Install Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go-version }}
+          # This step runs before the checkout, so setup-go cannot find go.sum
+          # to build a cache key. The explicit cache step below covers it.
+          cache: false
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -52,7 +55,7 @@ jobs:
       - name: Golang Format
         run: |
           make fmt
-          STATUS=$(git status --porcelain go.mod go.sum)
+          STATUS=$(git status --porcelain '*.go')
           if [ ! -z "$STATUS" ]; then
             echo "Running 'make fmt' to format your codes"
             exit 1
