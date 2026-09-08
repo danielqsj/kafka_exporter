@@ -575,7 +575,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 				klog.Errorf("Cannot get replicas of topic %s partition %d: %v", topic, partition, err)
 			} else {
 				ch <- prometheus.MustNewConstMetric(
-					topicPartitionReplicas, prometheus.GaugeValue, float64(len(replicas)), topic, strconv.FormatInt(int64(partition), 10),
+					topicPartitionReplicas, prometheus.GaugeValue, float64(len(replicas)), topic, strconv.FormatInt(int64(partition), 10),  fmt.Sprint(replicas),
 				)
 			}
 
@@ -1023,7 +1023,7 @@ func setup(
 	topicPartitionReplicas = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "topic", "partition_replicas"),
 		"Number of Replicas for this Topic/Partition",
-		[]string{"topic", "partition"}, labels,
+		[]string{"topic", "partition", "replicas"}, labels,
 	)
 
 	topicPartitionInSyncReplicas = prometheus.NewDesc(

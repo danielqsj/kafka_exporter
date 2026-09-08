@@ -238,7 +238,7 @@ kafka_topic_partition_leader_is_preferred{partition="0",topic="__consumer_offset
 
 # HELP kafka_topic_partition_replicas Number of Replicas for this Topic/Partition
 # TYPE kafka_topic_partition_replicas gauge
-kafka_topic_partition_replicas{partition="0",topic="__consumer_offsets"} 3
+kafka_topic_partition_replicas{partition="0",replicas="[1 2 3]",topic="__consumer_offsets"} 3
 
 # HELP kafka_topic_partition_under_replicated_partition 1 if Topic/Partition is under Replicated
 # TYPE kafka_topic_partition_under_replicated_partition gauge
