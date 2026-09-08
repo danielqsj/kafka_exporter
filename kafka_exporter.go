@@ -97,6 +97,7 @@ type kafkaOpts struct {
 	saslDisablePAFXFast      bool
 	saslAwsRegion            string
 	saslOAuthBearerTokenUrl  string
+	saslOAuthBearerTokenFile string
 	saslOAuthBearerScopes    string
 	useTLS                   bool
 	tlsServerName            string
@@ -172,6 +173,21 @@ func (o *oauthbearerTokenProvider) Token() (*sarama.AccessToken, error) {
 	}
 
 	return &sarama.AccessToken{Token: accessToken}, err
+}
+
+// fileTokenProvider returns a bearer token read from a file on every call,
+// supporting credentials that are rotated on disk (e.g. Kubernetes projected
+// service account tokens).
+type fileTokenProvider struct {
+	path string
+}
+
+func (f *fileTokenProvider) Token() (*sarama.AccessToken, error) {
+	data, err := os.ReadFile(f.path)
+	if err != nil {
+		return nil, fmt.Errorf("read oauthbearer token file %q: %w", f.path, err)
+	}
+	return &sarama.AccessToken{Token: strings.TrimSpace(string(data))}, nil
 }
 
 // CanReadCertAndKey returns true if the certificate and key files already exists,
@@ -256,24 +272,32 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 			config.Net.SASL.TokenProvider = &MSKAccessTokenProvider{region: opts.saslAwsRegion}
 		case "oauthbearer":
 			config.Net.SASL.Mechanism = sarama.SASLMechanism(sarama.SASLTypeOAuth)
-			tokenUrl := opts.saslOAuthBearerTokenUrl
-			if tokenUrl == "" {
-				tokenUrl = os.Getenv("SASL_OAUTHBEARER_TOKEN_URL")
+			tokenFile := opts.saslOAuthBearerTokenFile
+			if tokenFile == "" {
+				tokenFile = os.Getenv("SASL_OAUTHBEARER_TOKEN_FILE")
 			}
-			if tokenUrl == "" {
-				log.Fatalf("[ERROR] sasl.oauthbearer-token-url must be configured or SASL_OAUTHBEARER_TOKEN_URL environment variable must be set when using the OAuthBearer SASL mechanism")
+			if tokenFile != "" {
+				config.Net.SASL.TokenProvider = &fileTokenProvider{path: tokenFile}
+			} else {
+				tokenUrl := opts.saslOAuthBearerTokenUrl
+				if tokenUrl == "" {
+					tokenUrl = os.Getenv("SASL_OAUTHBEARER_TOKEN_URL")
+				}
+				if tokenUrl == "" {
+					log.Fatalf("[ERROR] sasl.oauthbearer-token-url or sasl.oauthbearer-token-file must be configured (or SASL_OAUTHBEARER_TOKEN_URL / SASL_OAUTHBEARER_TOKEN_FILE environment variable must be set) when using the OAuthBearer SASL mechanism")
+				}
+				saslUsername := opts.saslUsername
+				if saslUsername == "" {
+					log.Fatalf("[ERROR] sasl.username must be configured when using the OAuthBearer SASL mechanism with sasl.oauthbearer-token-url")
+				}
+				oauth2Config := clientcredentials.Config{
+					TokenURL:     tokenUrl,
+					ClientID:     saslUsername,
+					ClientSecret: saslPassword,
+					Scopes:       strings.Split(opts.saslOAuthBearerScopes, ","),
+				}
+				config.Net.SASL.TokenProvider = newOauthbearerTokenProvider(&oauth2Config)
 			}
-			saslUsername := opts.saslUsername
-			if saslUsername == "" {
-				log.Fatalf("[ERROR] sasl.username must be configured when using the OAuthBearer SASL mechanism")
-			}
-			oauth2Config := clientcredentials.Config{
-				TokenURL:     tokenUrl,
-				ClientID:     saslUsername,
-				ClientSecret: saslPassword,
-				Scopes:       strings.Split(opts.saslOAuthBearerScopes, ","),
-			}
-			config.Net.SASL.TokenProvider = newOauthbearerTokenProvider(&oauth2Config)
 		case "plain":
 		default:
 			return nil, fmt.Errorf(
@@ -883,6 +907,7 @@ func main() {
 	toFlagStringVar("sasl.password", "SASL user password.", "", &opts.saslPassword)
 	toFlagStringVar("sasl.aws-region", "The AWS region for IAM SASL authentication", os.Getenv("AWS_REGION"), &opts.saslAwsRegion)
 	toFlagStringVar("sasl.oauthbearer-token-url", "The url to retrieve OAuthBearer tokens from, for OAuthBearer SASL authentication", "", &opts.saslOAuthBearerTokenUrl)
+	toFlagStringVar("sasl.oauthbearer-token-file", "Path to a file containing an OAuthBearer token (e.g. a Kubernetes projected service account token). The file is re-read on each SASL handshake. Takes precedence over sasl.oauthbearer-token-url.", "", &opts.saslOAuthBearerTokenFile)
 	toFlagStringVar("sasl.oauthbearer-scopes", "The comma-separated scopes to use for OAuthBearer SASL authentication", "", &opts.saslOAuthBearerScopes)
 	toFlagStringVar("sasl.mechanism", "SASL SCRAM SHA algorithm: sha256 or sha512 or SASL mechanism: gssapi, awsiam or oauthbearer", "", &opts.saslMechanism)
 	toFlagStringVar("sasl.service-name", "Service name when using kerberos Auth", "", &opts.serviceName)
