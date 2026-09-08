@@ -334,7 +334,13 @@ Thanks goes to these wonderful people:
 Star ⭐
 ----------
 
-[![Stargazers over time](https://starchart.cc/danielqsj/kafka_exporter.svg)](https://starchart.cc/danielqsj/kafka_exporter)
+<a href="https://www.star-history.com/?repos=danielqsj%2Fkafka_exporter&type=date&legend=bottom-right">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=danielqsj/kafka_exporter&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=danielqsj/kafka_exporter&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=danielqsj/kafka_exporter&type=date&legend=top-left" />
+ </picture>
+</a>
 
 Donation
 --------
