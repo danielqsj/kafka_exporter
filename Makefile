@@ -45,7 +45,7 @@ build: promu
 
 crossbuild: promu
 	@echo ">> crossbuilding binaries"
-	@$(PROMU) crossbuild --go=1.26
+	@$(PROMU) crossbuild --go=1.27
 
 tarball: promu
 	@echo ">> building release tarball"
@@ -90,20 +90,10 @@ tidy:
 	@go mod tidy
 
 # Run golang lint against code
+# Enabled linters and formatters live in .golangci.yml
 .PHONY: lint
 lint: golangci-lint
-	@$(GOLANG_LINT) run \
-      --timeout 30m \
-      --disable-all \
-      -E unused \
-      -E ineffassign \
-      -E goimports \
-      -E gofmt \
-      -E misspell \
-      -E unparam \
-      -E unconvert \
-      -E govet \
-      -E errcheck
+	@$(GOLANG_LINT) run --timeout 30m
 
 # Run gosec security checks
 .PHONY: sec
@@ -121,7 +111,7 @@ golangci-lint:
 ifeq (, $(shell which golangci-lint))
 	@GOOS=$(shell uname -s | tr A-Z a-z) \
     		GOARCH=$(subst x86_64,amd64,$(patsubst i%86,386,$(shell uname -m))) \
-    		$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.5
+    		$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
 GOLANG_LINT=$(shell go env GOPATH)/bin/golangci-lint
 else
 GOLANG_LINT=$(shell which golangci-lint)
