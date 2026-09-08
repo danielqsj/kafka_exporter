@@ -459,13 +459,16 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 func (e *Exporter) collectChans(quit chan struct{}) {
 	original := make(chan prometheus.Metric)
 	container := make([]prometheus.Metric, 0, 100)
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		for metric := range original {
 			container = append(container, metric)
 		}
 	}()
 	e.collect(original)
 	close(original)
+	<-done
 	// Lock to avoid modification on the channel slice
 	e.sgMutex.Lock()
 	for _, ch := range e.sgChans {
