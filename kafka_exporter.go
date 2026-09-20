@@ -964,6 +964,35 @@ func main() {
 	setup(*listenAddress, *metricsPath, *topicFilter, *topicExclude, *groupFilter, *groupExclude, *logSarama, opts, labels)
 }
 
+func newHTTPHandler(metricsPath string, metricsHandler http.Handler) http.Handler {
+	mux := http.NewServeMux()
+
+	mux.Handle(metricsPath, metricsHandler)
+	if metricsPath != "/" {
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			_, err := w.Write([]byte(`<html>
+	        <head><title>Kafka Exporter</title></head>
+	        <body>
+	        <h1>Kafka Exporter</h1>
+	        <p><a href='` + metricsPath + `'>Metrics</a></p>
+	        </body>
+	        </html>`))
+			if err != nil {
+				klog.Error("Error handle / request", err)
+			}
+		})
+	}
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		// need more specific sarama check
+		_, err := w.Write([]byte("ok"))
+		if err != nil {
+			klog.Error("Error handle /healthz request", err)
+		}
+	})
+
+	return mux
+}
+
 func setup(
 	listenAddress string,
 	metricsPath string,
@@ -1091,28 +1120,7 @@ func setup(
 	defer exporter.client.Close()
 	prometheus.MustRegister(exporter)
 
-	mux := http.NewServeMux()
-
-	mux.Handle(metricsPath, promhttp.Handler())
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		_, err := w.Write([]byte(`<html>
-	        <head><title>Kafka Exporter</title></head>
-	        <body>
-	        <h1>Kafka Exporter</h1>
-	        <p><a href='` + metricsPath + `'>Metrics</a></p>
-	        </body>
-	        </html>`))
-		if err != nil {
-			klog.Error("Error handle / request", err)
-		}
-	})
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		// need more specific sarama check
-		_, err := w.Write([]byte("ok"))
-		if err != nil {
-			klog.Error("Error handle /healthz request", err)
-		}
-	})
+	mux := newHTTPHandler(metricsPath, promhttp.Handler())
 
 	if opts.serverUseTLS {
 		klog.V(INFO).Infoln("Listening on HTTPS", listenAddress)
