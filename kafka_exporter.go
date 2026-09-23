@@ -239,6 +239,11 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 		// Convert to lowercase so that SHA512 and SHA256 is still valid
 		opts.saslMechanism = strings.ToLower(opts.saslMechanism)
 
+		saslUsername := opts.saslUsername
+		if saslUsername == "" {
+			saslUsername = os.Getenv("SASL_USER_NAME")
+		}
+
 		saslPassword := opts.saslPassword
 		if saslPassword == "" {
 			saslPassword = os.Getenv("SASL_USER_PASSWORD")
@@ -256,7 +261,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 			config.Net.SASL.GSSAPI.ServiceName = opts.serviceName
 			config.Net.SASL.GSSAPI.KerberosConfigPath = opts.kerberosConfigPath
 			config.Net.SASL.GSSAPI.Realm = opts.realm
-			config.Net.SASL.GSSAPI.Username = opts.saslUsername
+			config.Net.SASL.GSSAPI.Username = saslUsername
 			if opts.kerberosAuthType == "keytabAuth" {
 				config.Net.SASL.GSSAPI.AuthType = sarama.KRB5_KEYTAB_AUTH
 				config.Net.SASL.GSSAPI.KeyTabPath = opts.keyTabPath
@@ -286,9 +291,8 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 				if tokenUrl == "" {
 					log.Fatalf("[ERROR] sasl.oauthbearer-token-url or sasl.oauthbearer-token-file must be configured (or SASL_OAUTHBEARER_TOKEN_URL / SASL_OAUTHBEARER_TOKEN_FILE environment variable must be set) when using the OAuthBearer SASL mechanism")
 				}
-				saslUsername := opts.saslUsername
 				if saslUsername == "" {
-					log.Fatalf("[ERROR] sasl.username must be configured when using the OAuthBearer SASL mechanism with sasl.oauthbearer-token-url")
+					log.Fatalf("[ERROR] sasl.username must be configured or SASL_USER_NAME environment variable must be set when using the OAuthBearer SASL mechanism with sasl.oauthbearer-token-url")
 				}
 				oauth2Config := clientcredentials.Config{
 					TokenURL:     tokenUrl,
@@ -309,8 +313,8 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 		config.Net.SASL.Enable = true
 		config.Net.SASL.Handshake = opts.useSASLHandshake
 
-		if opts.saslUsername != "" {
-			config.Net.SASL.User = opts.saslUsername
+		if saslUsername != "" {
+			config.Net.SASL.User = saslUsername
 		}
 
 		if saslPassword != "" {
