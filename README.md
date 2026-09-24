@@ -249,7 +249,13 @@ kafka_topic_partition_under_replicated_partition{partition="0",topic="__consumer
 
 **Required permissions**
 
-Describe all groups.
+Describe all groups. KIP-848 groups also require Describe access to their
+subscribed topics.
+
+On Kafka 3.8+, the exporter uses the group type from `ListGroups` to select
+`ConsumerGroupDescribe` or `DescribeGroups`. Kafka 3.7 KIP-848 is not supported
+because it is early access and `ListGroups` does not expose the group type. Set
+`kafka.version` to the broker version.
 
 **Metrics details**
 

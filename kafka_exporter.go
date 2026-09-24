@@ -685,7 +685,8 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	getConsumerGroupMetrics := func(broker *sarama.Broker) {
 		defer wg.Done()
 
-		groups, err := broker.ListGroups(&sarama.ListGroupsRequest{})
+		version := e.client.Config().Version
+		groups, err := broker.ListGroups(newListGroupsRequest(version))
 		if err != nil {
 			klog.Errorf("Cannot get consumer group: %v", err)
 			return
@@ -696,18 +697,12 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 				groupIds = append(groupIds, groupId)
 			}
 		}
-
-		describeGroups, err := broker.DescribeGroups(&sarama.DescribeGroupsRequest{Groups: groupIds})
+		groupInfos, err := describeGroupsByType(broker, groupIds, groups.GroupsData, version)
 		if err != nil {
-			klog.Errorf("Cannot get describe groups: %v", err)
-			return
+			klog.Errorf("Cannot describe all consumer groups on broker %s: %v", broker.Addr(), err)
 		}
-		for _, group := range describeGroups.Groups {
-			if group.Err != 0 {
-				klog.Errorf("Cannot describe for the group %s with error code %d", group.GroupId, group.Err)
-				continue
-			}
 
+		for _, group := range groupInfos {
 			err := pool.Submit(func() {
 				e.emitGroupMetrics(group, broker, offset, ch)
 			})
@@ -751,35 +746,23 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	}
 }
 
-func (e *Exporter) emitGroupMetrics(group *sarama.GroupDescription, broker *sarama.Broker, offsetMap map[string]map[int32]int64, ch chan<- prometheus.Metric) {
-	offsetFetchRequest := sarama.OffsetFetchRequest{ConsumerGroup: group.GroupId, Version: e.fetchOffsetVersion()}
-	if e.offsetShowAll {
-		for topic, partitions := range offsetMap {
-			for partition := range partitions {
-				offsetFetchRequest.AddPartition(topic, partition)
-			}
-		}
-	} else {
-		for _, member := range group.Members {
-			if len(member.MemberAssignment) == 0 {
-				klog.Warningf("MemberAssignment is empty for group member: %v in group: %v", member.MemberId, group.GroupId)
-				continue
-			}
-			assignment, err := member.GetMemberAssignment()
-			if err != nil {
-				klog.Errorf("Cannot get GetMemberAssignment of group member %v : %v", member, err)
-				continue
-			}
-			for topic, partions := range assignment.Topics {
-				for _, partition := range partions {
-					offsetFetchRequest.AddPartition(topic, partition)
-				}
-			}
+func (e *Exporter) emitGroupMetrics(group consumerGroupInfo, broker *sarama.Broker, offsetMap map[string]map[int32]int64, ch chan<- prometheus.Metric) {
+	ch <- prometheus.MustNewConstMetric(
+		consumergroupMembers, prometheus.GaugeValue, float64(group.memberCount), group.id,
+	)
+
+	partitions := groupOffsetPartitions(group, offsetMap, e.offsetShowAll)
+	if !e.offsetShowAll && len(partitions) == 0 {
+		return
+	}
+
+	offsetFetchRequest := sarama.OffsetFetchRequest{ConsumerGroup: group.id, Version: e.fetchOffsetVersion()}
+	for topic, topicPartitions := range partitions {
+		for _, partition := range topicPartitions {
+			offsetFetchRequest.AddPartition(topic, partition)
 		}
 	}
-	ch <- prometheus.MustNewConstMetric(
-		consumergroupMembers, prometheus.GaugeValue, float64(len(group.Members)), group.GroupId,
-	)
+
 	// make a copy of the broker since each broker object does not support concurrent requests
 	brokerCopy := sarama.NewBroker(broker.Addr())
 	if err := brokerCopy.Open(e.client.Config()); err != nil {
@@ -789,7 +772,7 @@ func (e *Exporter) emitGroupMetrics(group *sarama.GroupDescription, broker *sara
 	defer brokerCopy.Close()
 	offsetFetchResponse, err := brokerCopy.FetchOffset(&offsetFetchRequest)
 	if err != nil {
-		klog.Errorf("Cannot get offset of group %s: %v", group.GroupId, err)
+		klog.Errorf("Cannot get offset of group %s: %v", group.id, err)
 		return
 	}
 
@@ -820,7 +803,7 @@ func (e *Exporter) emitGroupMetrics(group *sarama.GroupDescription, broker *sara
 				currentOffsetSum += currentOffset
 			}
 			ch <- prometheus.MustNewConstMetric(
-				consumergroupCurrentOffset, prometheus.GaugeValue, float64(currentOffset), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
+				consumergroupCurrentOffset, prometheus.GaugeValue, float64(currentOffset), group.id, topic, strconv.FormatInt(int64(partition), 10),
 			)
 			currentPartitionOffset, currentPartitionOffsetError := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
 			if currentPartitionOffsetError != nil {
@@ -842,15 +825,15 @@ func (e *Exporter) emitGroupMetrics(group *sarama.GroupDescription, broker *sara
 				}
 
 				ch <- prometheus.MustNewConstMetric(
-					consumergroupLag, prometheus.GaugeValue, float64(lag), group.GroupId, topic, strconv.FormatInt(int64(partition), 10),
+					consumergroupLag, prometheus.GaugeValue, float64(lag), group.id, topic, strconv.FormatInt(int64(partition), 10),
 				)
 			}
 		}
 		ch <- prometheus.MustNewConstMetric(
-			consumergroupCurrentOffsetSum, prometheus.GaugeValue, float64(currentOffsetSum), group.GroupId, topic,
+			consumergroupCurrentOffsetSum, prometheus.GaugeValue, float64(currentOffsetSum), group.id, topic,
 		)
 		ch <- prometheus.MustNewConstMetric(
-			consumergroupLagSum, prometheus.GaugeValue, float64(lagSum), group.GroupId, topic,
+			consumergroupLagSum, prometheus.GaugeValue, float64(lagSum), group.id, topic,
 		)
 	}
 }
