@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -543,10 +544,23 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 		e.mu.Lock()
 		offset[topic] = make(map[int32]int64, len(partitions))
 		e.mu.Unlock()
+		// A topic deleted after the partition list was read fails every remaining
+		// lookup only after metadata retries, seconds per partition, which holds up
+		// the whole collect. Stop walking it as soon as Kafka says it is gone.
+		topicDeleted := func(err error) bool {
+			if !errors.Is(err, sarama.ErrUnknownTopicOrPartition) {
+				return false
+			}
+			klog.Warningf("Topic %s no longer exists, skipping its remaining partitions", topic)
+			return true
+		}
 		for _, partition := range partitions {
 			broker, err := e.client.Leader(topic, partition)
 			if err != nil {
 				klog.Errorf("Cannot get leader of topic %s partition %d: %v", topic, partition, err)
+				if topicDeleted(err) {
+					return
+				}
 			} else {
 				ch <- prometheus.MustNewConstMetric(
 					topicPartitionLeader, prometheus.GaugeValue, float64(broker.ID()), topic, strconv.FormatInt(int64(partition), 10),
@@ -556,6 +570,9 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			currentOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
 			if err != nil {
 				klog.Errorf("Cannot get current offset of topic %s partition %d: %v", topic, partition, err)
+				if topicDeleted(err) {
+					return
+				}
 			} else {
 				e.mu.Lock()
 				offset[topic][partition] = currentOffset
@@ -568,6 +585,9 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			oldestOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetOldest)
 			if err != nil {
 				klog.Errorf("Cannot get oldest offset of topic %s partition %d: %v", topic, partition, err)
+				if topicDeleted(err) {
+					return
+				}
 			} else {
 				ch <- prometheus.MustNewConstMetric(
 					topicOldestOffset, prometheus.GaugeValue, float64(oldestOffset), topic, strconv.FormatInt(int64(partition), 10),
@@ -577,6 +597,9 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			replicas, err := e.client.Replicas(topic, partition)
 			if err != nil {
 				klog.Errorf("Cannot get replicas of topic %s partition %d: %v", topic, partition, err)
+				if topicDeleted(err) {
+					return
+				}
 			} else {
 				ch <- prometheus.MustNewConstMetric(
 					topicPartitionReplicas, prometheus.GaugeValue, float64(len(replicas)), topic, strconv.FormatInt(int64(partition), 10),
@@ -586,6 +609,9 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			inSyncReplicas, err := e.client.InSyncReplicas(topic, partition)
 			if err != nil {
 				klog.Errorf("Cannot get in-sync replicas of topic %s partition %d: %v", topic, partition, err)
+				if topicDeleted(err) {
+					return
+				}
 			} else {
 				ch <- prometheus.MustNewConstMetric(
 					topicPartitionInSyncReplicas, prometheus.GaugeValue, float64(len(inSyncReplicas)), topic, strconv.FormatInt(int64(partition), 10),
