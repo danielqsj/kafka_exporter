@@ -93,7 +93,7 @@ make a `docker-compose.yml` flie
 services:
   kafka-exporter:
     image: danielqsj/kafka-exporter 
-    command: ["--kafka.server=kafka:9092", "[--kafka.server=another-server ...]"]
+    command: ["--kafka.server=kafka:9092"]
     ports:
       - 9308:9308     
 ```
