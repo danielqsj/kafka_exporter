@@ -11,34 +11,37 @@ import (
 )
 
 // A topic deleted after the exporter cached its partition list must not cost a
-// metadata refresh (with retries) for every remaining partition. Other errors
-// must not stop the walk.
+// metadata refresh (with retries) for every remaining partition. A failing
+// partition of a topic that still exists must not hide the healthy ones.
 func TestCollectStopsWalkingDeletedTopic(t *testing.T) {
+	const partitions = 20
 	tests := []struct {
 		name string
 		// leader of the target topic's partitions in the cached metadata
 		cachedLeader int32
-		// error the broker returns for the target topic's offsets
+		// error the broker returns for the offsets of the first `failing` partitions
 		offsetErr sarama.KError
+		failing   int32
 		// whether the target topic is still in the cluster's metadata
 		exists bool
 	}{
 		// The broker answers the offset request with UNKNOWN_TOPIC_OR_PARTITION.
-		{name: "offset lookup fails", cachedLeader: 0, offsetErr: sarama.ErrUnknownTopicOrPartition},
+		{name: "offset lookup fails", cachedLeader: 0, offsetErr: sarama.ErrUnknownTopicOrPartition, failing: partitions},
 		// The cached leader is unknown, so the leader lookup refreshes metadata.
-		{name: "leader lookup fails", cachedLeader: 99, offsetErr: sarama.ErrUnknownTopicOrPartition},
-		// A partition-level error on a topic that still exists.
-		{name: "other error keeps walking", cachedLeader: 0, offsetErr: sarama.ErrNotLeaderForPartition, exists: true},
+		{name: "leader lookup fails", cachedLeader: 99, offsetErr: sarama.ErrUnknownTopicOrPartition, failing: partitions},
+		// One partition is unknown but the refresh still lists the topic.
+		{name: "unknown partition of a live topic", cachedLeader: 0, offsetErr: sarama.ErrUnknownTopicOrPartition, failing: 1, exists: true},
+		// A different partition-level error on a topic that still exists.
+		{name: "other error keeps walking", cachedLeader: 0, offsetErr: sarama.ErrNotLeaderForPartition, failing: partitions, exists: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testCollectWithFailingTopic(t, tt.cachedLeader, tt.offsetErr, tt.exists)
+			testCollectWithFailingTopic(t, partitions, tt.cachedLeader, tt.offsetErr, tt.failing, tt.exists)
 		})
 	}
 }
 
-func testCollectWithFailingTopic(t *testing.T, cachedLeader int32, offsetErr sarama.KError, exists bool) {
-	const partitions = 20
+func testCollectWithFailingTopic(t *testing.T, partitions, cachedLeader int32, offsetErr sarama.KError, failing int32, exists bool) {
 	initTopicMetricDescs()
 
 	mock := sarama.NewMockBroker(t, 0)
@@ -69,7 +72,11 @@ func testCollectWithFailingTopic(t *testing.T, cachedLeader int32, offsetErr sar
 	offsets.AddTopicPartition("kept", 0, 10)
 	offsets.Blocks["target"] = map[int32]*sarama.OffsetResponseBlock{}
 	for p := int32(0); p < partitions; p++ {
-		offsets.Blocks["target"][p] = &sarama.OffsetResponseBlock{Err: offsetErr}
+		if p < failing {
+			offsets.Blocks["target"][p] = &sarama.OffsetResponseBlock{Err: offsetErr}
+		} else {
+			offsets.AddTopicPartition("target", p, 10)
+		}
 	}
 	mock.SetHandlerByMap(map[string]sarama.MockResponse{
 		"MetadataRequest":   metadata(exists, mock.BrokerID()),
@@ -92,19 +99,18 @@ func testCollectWithFailingTopic(t *testing.T, cachedLeader int32, offsetErr sar
 	e.collect(ch)
 	close(ch)
 
-	// Only "kept" can produce an offset; every offset lookup on "target" fails.
-	var keptOffsetEmitted bool
-	var leaderMetrics int
+	var offsetMetrics, leaderMetrics int32
 	for m := range ch {
 		switch m.Desc() {
 		case topicCurrentOffset:
-			keptOffsetEmitted = true
+			offsetMetrics++
 		case topicPartitionLeader:
 			leaderMetrics++
 		}
 	}
-	if !keptOffsetEmitted {
-		t.Error("no current offset metric emitted for the surviving topic")
+	// "kept" plus every healthy partition of "target"
+	if want := partitions - failing + 1; offsetMetrics != want {
+		t.Errorf("got %d current offset metrics, want %d", offsetMetrics, want)
 	}
 
 	if exists {

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -544,11 +545,16 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 		e.mu.Lock()
 		offset[topic] = make(map[int32]int64, len(partitions))
 		e.mu.Unlock()
-		// A topic deleted after the partition list was read fails every remaining
-		// lookup only after metadata retries, seconds per partition, which holds up
-		// the whole collect. Stop walking it as soon as Kafka says it is gone.
-		topicDeleted := func(err error) bool {
+		// A deleted topic costs metadata retries on every remaining partition and
+		// stalls the collect. sarama refreshes metadata before returning
+		// ErrUnknownTopicOrPartition and drops the topic from its cache only if the
+		// topic itself is gone; an unknown partition of a live topic is left as is.
+		topicGone := func(err error) bool {
 			if !errors.Is(err, sarama.ErrUnknownTopicOrPartition) {
+				return false
+			}
+			topics, err := e.client.Topics()
+			if err != nil || slices.Contains(topics, topic) {
 				return false
 			}
 			klog.Warningf("Topic %s no longer exists, skipping its remaining partitions", topic)
@@ -558,7 +564,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			broker, err := e.client.Leader(topic, partition)
 			if err != nil {
 				klog.Errorf("Cannot get leader of topic %s partition %d: %v", topic, partition, err)
-				if topicDeleted(err) {
+				if topicGone(err) {
 					return
 				}
 			} else {
@@ -570,7 +576,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			currentOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
 			if err != nil {
 				klog.Errorf("Cannot get current offset of topic %s partition %d: %v", topic, partition, err)
-				if topicDeleted(err) {
+				if topicGone(err) {
 					return
 				}
 			} else {
@@ -585,7 +591,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			oldestOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetOldest)
 			if err != nil {
 				klog.Errorf("Cannot get oldest offset of topic %s partition %d: %v", topic, partition, err)
-				if topicDeleted(err) {
+				if topicGone(err) {
 					return
 				}
 			} else {
@@ -597,7 +603,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			replicas, err := e.client.Replicas(topic, partition)
 			if err != nil {
 				klog.Errorf("Cannot get replicas of topic %s partition %d: %v", topic, partition, err)
-				if topicDeleted(err) {
+				if topicGone(err) {
 					return
 				}
 			} else {
@@ -609,7 +615,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 			inSyncReplicas, err := e.client.InSyncReplicas(topic, partition)
 			if err != nil {
 				klog.Errorf("Cannot get in-sync replicas of topic %s partition %d: %v", topic, partition, err)
-				if topicDeleted(err) {
+				if topicGone(err) {
 					return
 				}
 			} else {
