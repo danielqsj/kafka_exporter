@@ -58,8 +58,8 @@
       "datasource": "${DS_PROMETHEUS_WH211}",
       "fill": 0,
       "gridPos": {
-        "h": 10,
-        "w": 10,
+        "h": 7,
+        "w": 12,
         "x": 0,
         "y": 0
       },
@@ -147,9 +147,9 @@
       "datasource": "${DS_PROMETHEUS_WH211}",
       "fill": 0,
       "gridPos": {
-        "h": 10,
-        "w": 10,
-        "x": 10,
+        "h": 7,
+        "w": 12,
+        "x": 12,
         "y": 0
       },
       "id": 12,
@@ -237,10 +237,10 @@
       "datasource": "${DS_PROMETHEUS_WH211}",
       "fill": 0,
       "gridPos": {
-        "h": 10,
-        "w": 10,
+        "h": 7,
+        "w": 12,
         "x": 0,
-        "y": 10
+        "y": 7
       },
       "id": 16,
       "legend": {
@@ -325,10 +325,10 @@
       "datasource": "${DS_PROMETHEUS_WH211}",
       "fill": 0,
       "gridPos": {
-        "h": 10,
-        "w": 10,
-        "x": 10,
-        "y": 10
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 7
       },
       "id": 18,
       "legend": {
@@ -415,9 +415,9 @@
       "fill": 1,
       "gridPos": {
         "h": 7,
-        "w": 20,
+        "w": 24,
         "x": 0,
-        "y": 20
+        "y": 14
       },
       "id": 8,
       "legend": {
