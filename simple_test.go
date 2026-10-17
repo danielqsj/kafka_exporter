@@ -114,3 +114,41 @@ func TestFileTokenProvider_MissingFile(t *testing.T) {
 		t.Errorf("error %q does not mention the token file context", err)
 	}
 }
+
+// SASL enabled without --sasl.mechanism must connect with PLAIN, as the
+// README documents, instead of rejecting the empty mechanism.
+func TestNewExporter_SASLDefaultMechanism(t *testing.T) {
+	for _, mechanism := range []string{"", "plain"} {
+		t.Run("mechanism="+mechanism, func(t *testing.T) {
+			mock := sarama.NewMockBroker(t, 0)
+			t.Cleanup(mock.Close)
+			mock.SetHandlerByMap(map[string]sarama.MockResponse{
+				"ApiVersionsRequest": sarama.NewMockApiVersionsResponse(t).SetApiKeys([]sarama.ApiVersionsResponseKey{
+					{ApiKey: 3, MaxVersion: 5},  // Metadata
+					{ApiKey: 17, MaxVersion: 1}, // SaslHandshake
+					{ApiKey: 36, MaxVersion: 0}, // SaslAuthenticate
+				}),
+				"SaslHandshakeRequest":    sarama.NewMockSaslHandshakeResponse(t).SetEnabledMechanisms([]string{sarama.SASLTypePlaintext}),
+				"SaslAuthenticateRequest": sarama.NewMockSaslAuthenticateResponse(t),
+				"MetadataRequest":         sarama.NewMockMetadataResponse(t).SetBroker(mock.Addr(), mock.BrokerID()),
+			})
+
+			opts := kafkaOpts{
+				uri:                     []string{mock.Addr()},
+				useSASL:                 true,
+				useSASLHandshake:        true,
+				saslUsername:            "user",
+				saslPassword:            "pass",
+				saslMechanism:           mechanism,
+				kafkaVersion:            "2.0.0",
+				metadataRefreshInterval: "30s",
+				groupMetricsTimeout:     "5m",
+			}
+			e, err := NewExporter(opts, ".*", "^$", ".*", "^$")
+			if err != nil {
+				t.Fatalf("NewExporter returned error: %v", err)
+			}
+			t.Cleanup(func() { _ = e.client.Close() })
+		})
+	}
+}

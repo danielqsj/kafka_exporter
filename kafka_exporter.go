@@ -304,7 +304,7 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 				}
 				config.Net.SASL.TokenProvider = newOauthbearerTokenProvider(&oauth2Config)
 			}
-		case "plain":
+		case "", "plain":
 		default:
 			return nil, fmt.Errorf(
 				`invalid sasl mechanism %q: can only be "scram-sha256", "scram-sha512", "gssapi", "awsiam" or "plain"`,
