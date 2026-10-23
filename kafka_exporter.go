@@ -69,6 +69,9 @@ var (
 // the prometheus metrics package.
 type Exporter struct {
 	client                  sarama.Client
+	clientMu                sync.Mutex
+	uris                    []string
+	config                  *sarama.Config
 	topicFilter             *regexp.Regexp
 	topicExclude            *regexp.Regexp
 	groupFilter             *regexp.Regexp
@@ -127,6 +130,7 @@ type kafkaOpts struct {
 	groupWorkers             int
 	allowConcurrent          bool
 	allowAutoTopicCreation   bool
+	lazyConnect              bool
 	verbosityLogLevel        int
 	groupMetricsTimeout      string
 }
@@ -377,15 +381,22 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 
 	config.Metadata.AllowAutoTopicCreation = opts.allowAutoTopicCreation
 
-	client, err := sarama.NewClient(opts.uri, config)
-	if err != nil {
-		return nil, fmt.Errorf("Error Init Kafka Client: %w", err)
+	var client sarama.Client
+	if opts.lazyConnect {
+		klog.V(INFO).Infoln("Lazy connect enabled, connecting to Kafka on the first scrape")
+	} else {
+		client, err = sarama.NewClient(opts.uri, config)
+		if err != nil {
+			return nil, fmt.Errorf("Error Init Kafka Client: %w", err)
+		}
+		klog.V(TRACE).Infoln("Done Init Clients")
 	}
 
-	klog.V(TRACE).Infoln("Done Init Clients")
 	// Init our exporter.
 	return &Exporter{
 		client:                  client,
+		uris:                    opts.uri,
+		config:                  config,
 		topicFilter:             regexp.MustCompile(topicFilter),
 		topicExclude:            regexp.MustCompile(topicExclude),
 		groupFilter:             regexp.MustCompile(groupFilter),
@@ -404,6 +415,34 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 		consumerGroupFetchAll:   config.Version.IsAtLeast(sarama.V2_0_0_0),
 		groupMetricsTimeout:     groupMetricsTimeout,
 	}, nil
+}
+
+// connect creates the Kafka client if it does not exist yet. With lazy connect
+// the exporter starts without one, and every scrape tries again until a broker
+// answers.
+func (e *Exporter) connect() error {
+	e.clientMu.Lock()
+	defer e.clientMu.Unlock()
+	if e.client != nil {
+		return nil
+	}
+	client, err := sarama.NewClient(e.uris, e.config)
+	if err != nil {
+		return fmt.Errorf("Error Init Kafka Client: %w", err)
+	}
+	klog.V(INFO).Infoln("Connected to Kafka")
+	e.client = client
+	return nil
+}
+
+// Close closes the Kafka client, if one was created.
+func (e *Exporter) Close() error {
+	e.clientMu.Lock()
+	defer e.clientMu.Unlock()
+	if e.client == nil {
+		return nil
+	}
+	return e.client.Close()
 }
 
 func (e *Exporter) fetchOffsetVersion() int16 {
@@ -491,6 +530,10 @@ func (e *Exporter) collectChans(quit chan struct{}) {
 }
 
 func (e *Exporter) collect(ch chan<- prometheus.Metric) {
+	if err := e.connect(); err != nil {
+		klog.Errorf("Cannot connect to Kafka, retrying on the next scrape: %v", err)
+		return
+	}
 	wg := sync.WaitGroup{}
 	ch <- prometheus.MustNewConstMetric(
 		clusterBrokers, prometheus.GaugeValue, float64(len(e.client.Brokers())),
@@ -960,6 +1003,7 @@ func main() {
 	toFlagBoolVar("concurrent.enable", "If true, all scrapes will trigger kafka operations otherwise, they will share results. WARN: This should be disabled on large clusters. Default is false", false, "false", &opts.allowConcurrent)
 	toFlagIntVar("topic.workers", "Number of topic workers", 100, "100", &opts.topicWorkers)
 	toFlagIntVar("group.workers", "Number of consumer group workers", 100, "100", &opts.groupWorkers)
+	toFlagBoolVar("kafka.lazy-connect", "If true, start without connecting to Kafka and connect on the first scrape, retrying on every scrape until a broker answers, instead of exiting when Kafka is unreachable at startup, default is false.", false, "false", &opts.lazyConnect)
 	toFlagBoolVar("kafka.allow-auto-topic-creation", "If true, the broker may auto-create topics that we requested which do not already exist, default is false.", false, "false", &opts.allowAutoTopicCreation)
 	toFlagIntVar("verbosity", "Verbosity log level", 0, "0", &opts.verbosityLogLevel)
 	toFlagStringVar("group.metrics.timeout", "Timeout for emitting consumer group metrics", "5m", &opts.groupMetricsTimeout)
@@ -1138,7 +1182,7 @@ func setup(
 	if err != nil {
 		klog.Fatalln(err)
 	}
-	defer exporter.client.Close()
+	defer exporter.Close()
 	prometheus.MustRegister(exporter)
 
 	mux := newHTTPHandler(metricsPath, promhttp.Handler())
