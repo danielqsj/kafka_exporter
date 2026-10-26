@@ -111,6 +111,7 @@ This image is configurable using different flags
 |--------------------------------|----------------|------------------------------------------------------------------------------------------------------------------------------------------------|
 | kafka.server                   | kafka:9092     | Addresses (host:port) of Kafka server                                                                                                          |
 | kafka.version                  | 2.0.0          | Kafka broker version                                                                                                                           |
+| kafka.lazy-connect             | false          | Start without Kafka and connect on the first scrape, retrying every scrape, instead of exiting when Kafka is unreachable at startup            |
 | sasl.enabled                   | false          | Connect using SASL/PLAIN                                                                                                                       |
 | sasl.handshake                 | true           | Only set this to false if using a non-Kafka SASL proxy                                                                                         |
 | sasl.username                  |                | SASL user name                                                                                                                                 |

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var bootstrap_servers = []string{"localhost:9092"}
@@ -150,5 +151,69 @@ func TestNewExporter_SASLDefaultMechanism(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = e.client.Close() })
 		})
+	}
+}
+
+func unreachableKafkaOpts(lazyConnect bool) kafkaOpts {
+	return kafkaOpts{
+		uri:                     []string{"127.0.0.1:1"},
+		kafkaVersion:            "2.0.0",
+		metadataRefreshInterval: "30s",
+		groupMetricsTimeout:     "5m",
+		lazyConnect:             lazyConnect,
+	}
+}
+
+func TestNewExporter_FailsWithoutKafkaByDefault(t *testing.T) {
+	if _, err := NewExporter(unreachableKafkaOpts(false), ".*", "^$", ".*", "^$"); err == nil {
+		t.Fatal("NewExporter succeeded with no reachable broker")
+	}
+}
+
+func TestNewExporter_LazyConnectStartsWithoutKafka(t *testing.T) {
+	e, err := NewExporter(unreachableKafkaOpts(true), ".*", "^$", ".*", "^$")
+	if err != nil {
+		t.Fatalf("NewExporter returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = e.Close() })
+
+	ch := make(chan prometheus.Metric, 100)
+	e.collect(ch)
+	close(ch)
+
+	if n := len(ch); n != 0 {
+		t.Fatalf("collect sent %d metrics while Kafka is unreachable", n)
+	}
+	if e.client != nil {
+		t.Fatal("client was created although no broker answered")
+	}
+}
+
+func TestNewExporter_LazyConnectConnectsOnceKafkaAnswers(t *testing.T) {
+	mock := sarama.NewMockBroker(t, 0)
+	t.Cleanup(mock.Close)
+	mock.SetHandlerByMap(map[string]sarama.MockResponse{
+		"ApiVersionsRequest": sarama.NewMockApiVersionsResponse(t).SetApiKeys([]sarama.ApiVersionsResponseKey{
+			{ApiKey: 3, MaxVersion: 5}, // Metadata
+		}),
+		"MetadataRequest": sarama.NewMockMetadataResponse(t).SetBroker(mock.Addr(), mock.BrokerID()),
+	})
+	opts := unreachableKafkaOpts(true)
+	opts.uri = []string{mock.Addr()}
+
+	e, err := NewExporter(opts, ".*", "^$", ".*", "^$")
+	if err != nil {
+		t.Fatalf("NewExporter returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = e.Close() })
+	if e.client != nil {
+		t.Fatal("client was created before the first scrape")
+	}
+
+	if err := e.connect(); err != nil {
+		t.Fatalf("connect returned error: %v", err)
+	}
+	if e.client == nil {
+		t.Fatal("connect did not create the client")
 	}
 }
