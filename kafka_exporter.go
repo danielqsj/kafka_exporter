@@ -490,6 +490,18 @@ func (e *Exporter) collectChans(quit chan struct{}) {
 	e.sgMutex.Unlock()
 }
 
+// topicGone reports whether err means the topic itself was deleted. sarama
+// refreshes metadata before returning ErrUnknownTopicOrPartition and drops the
+// topic from its cache only if the topic is gone; an unknown partition of a
+// live topic is left as is.
+func (e *Exporter) topicGone(topic string, err error) bool {
+	if !errors.Is(err, sarama.ErrUnknownTopicOrPartition) {
+		return false
+	}
+	topics, err := e.client.Topics()
+	return err == nil && !slices.Contains(topics, topic)
+}
+
 func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	wg := sync.WaitGroup{}
 	ch <- prometheus.MustNewConstMetric(
@@ -546,15 +558,9 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 		offset[topic] = make(map[int32]int64, len(partitions))
 		e.mu.Unlock()
 		// A deleted topic costs metadata retries on every remaining partition and
-		// stalls the collect. sarama refreshes metadata before returning
-		// ErrUnknownTopicOrPartition and drops the topic from its cache only if the
-		// topic itself is gone; an unknown partition of a live topic is left as is.
+		// stalls the collect.
 		topicGone := func(err error) bool {
-			if !errors.Is(err, sarama.ErrUnknownTopicOrPartition) {
-				return false
-			}
-			topics, err := e.client.Topics()
-			if err != nil || slices.Contains(topics, topic) {
+			if !e.topicGone(topic, err) {
 				return false
 			}
 			klog.Warningf("Topic %s no longer exists, skipping its remaining partitions", topic)
@@ -824,6 +830,7 @@ func (e *Exporter) emitGroupMetrics(group consumerGroupInfo, broker *sarama.Brok
 
 		var currentOffsetSum int64
 		var lagSum int64
+		deleted := false
 		for partition, offsetFetchResponseBlock := range partitions {
 			err := offsetFetchResponseBlock.Err
 			if err != sarama.ErrNoError {
@@ -840,6 +847,13 @@ func (e *Exporter) emitGroupMetrics(group consumerGroupInfo, broker *sarama.Brok
 			currentPartitionOffset, currentPartitionOffsetError := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
 			if currentPartitionOffsetError != nil {
 				klog.Errorf("Cannot get current offset of topic %s partition %d: %v", topic, partition, currentPartitionOffsetError)
+				// A group's offsets for a deleted topic still reach this loop; without
+				// this, every partition repeats the metadata retries.
+				if e.topicGone(topic, currentPartitionOffsetError) {
+					klog.Warningf("Topic %s no longer exists, skipping its remaining partitions for group %s", topic, group.id)
+					deleted = true
+					break
+				}
 			} else {
 				var lag int64
 				if offsetFetchResponseBlock.Offset == -1 {
@@ -860,6 +874,9 @@ func (e *Exporter) emitGroupMetrics(group consumerGroupInfo, broker *sarama.Brok
 					consumergroupLag, prometheus.GaugeValue, float64(lag), group.id, topic, strconv.FormatInt(int64(partition), 10),
 				)
 			}
+		}
+		if deleted {
+			continue
 		}
 		ch <- prometheus.MustNewConstMetric(
 			consumergroupCurrentOffsetSum, prometheus.GaugeValue, float64(currentOffsetSum), group.id, topic,
