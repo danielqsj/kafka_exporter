@@ -3,7 +3,7 @@
 kafka_exporter
 ==============
 
-[![CI](https://github.com/danielqsj/kafka_exporter/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/danielqsj/kafka_exporter/actions/workflows/ci.yml)[![Docker Pulls](https://img.shields.io/docker/pulls/danielqsj/kafka-exporter.svg)](https://hub.docker.com/r/danielqsj/kafka-exporter)[![Go Report Card](https://goreportcard.com/badge/github.com/danielqsj/kafka_exporter)](https://goreportcard.com/report/github.com/danielqsj/kafka_exporter)[![Language](https://img.shields.io/badge/language-Go-red.svg)](https://github.com/danielqsj/kafka-exporter)[![GitHub release](https://img.shields.io/badge/release-1.11.0-green.svg)](https://github.com/danielqsj/kafka-exporter/releases)[![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
+[![CI](https://github.com/danielqsj/kafka_exporter/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/danielqsj/kafka_exporter/actions/workflows/ci.yml)[![Docker Pulls](https://img.shields.io/docker/pulls/danielqsj/kafka-exporter.svg)](https://hub.docker.com/r/danielqsj/kafka-exporter)[![Go Report Card](https://goreportcard.com/badge/github.com/danielqsj/kafka_exporter)](https://goreportcard.com/report/github.com/danielqsj/kafka_exporter)[![Language](https://img.shields.io/badge/language-Go-red.svg)](https://github.com/danielqsj/kafka_exporter)[![GitHub release](https://img.shields.io/badge/release-1.11.0-green.svg)](https://github.com/danielqsj/kafka_exporter/releases)[![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
 
 Kafka exporter for Prometheus. For other metrics from Kafka, have a look at the [JMX exporter](https://github.com/prometheus/jmx_exporter).
 
@@ -40,7 +40,7 @@ Dependency
 ----------
 
 - [Prometheus](https://prometheus.io)
-- [Sarama](https://shopify.github.io/sarama)
+- [Sarama](https://github.com/IBM/sarama)
 - [Golang](https://golang.org)
 
 Download
@@ -88,7 +88,7 @@ docker run -ti --rm -p 9308:9308 danielqsj/kafka-exporter --kafka.server=kafka:9
 ```
 
 ### Run Docker Compose
-make a `docker-compose.yml` flie
+make a `docker-compose.yml` file
 ```
 services:
   kafka-exporter:
@@ -172,7 +172,7 @@ For details on the underlying metrics please see [Apache Kafka](https://kafka.ap
 
 **Metrics details**
 
-| Name                | Exposed informations                   |
+| Name                | Exposed information                   |
 |---------------------|----------------------------------------|
 | `kafka_brokers`     | Number of Brokers in the Kafka Cluster |
 | `kafka_broker_info` | Information about the Kafka Broker     |
@@ -198,7 +198,7 @@ Describe all topics.
 
 **Metrics details**
 
-| Name                                               | Exposed informations                                |
+| Name                                               | Exposed information                                |
 |----------------------------------------------------|-----------------------------------------------------|
 | `kafka_topic_partitions`                           | Number of partitions for this Topic                 |
 | `kafka_topic_partition_current_offset`             | Current Offset of a Broker at Topic/Partition       |
@@ -259,7 +259,7 @@ because it is early access and `ListGroups` does not expose the group type. Set
 
 **Metrics details**
 
-| Name                                         | Exposed informations                                                     |
+| Name                                         | Exposed information                                                     |
 |----------------------------------------------|--------------------------------------------------------------------------|
 | `kafka_consumergroup_current_offset`         | Current Offset of a ConsumerGroup at Topic/Partition                     |
 | `kafka_consumergroup_current_offset_sum`     | Current Offset of a ConsumerGroup at Topic for all partitions            |
