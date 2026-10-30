@@ -762,7 +762,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 				servers = append(servers, broker.Addr())
 			}
 		}
-		klog.Info(servers)
+		klog.V(DEBUG).Infof("Fetching consumer group metrics from brokers %v", servers)
 		for _, broker := range e.client.Brokers() {
 			for _, server := range servers {
 				if server == broker.Addr() {
