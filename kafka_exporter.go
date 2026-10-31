@@ -335,7 +335,9 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 		if opts.tlsCAFile != "" {
 			if ca, err := os.ReadFile(opts.tlsCAFile); err == nil {
 				config.Net.TLS.Config.RootCAs = x509.NewCertPool()
-				config.Net.TLS.Config.RootCAs.AppendCertsFromPEM(ca)
+				if !config.Net.TLS.Config.RootCAs.AppendCertsFromPEM(ca) {
+					return nil, fmt.Errorf("no PEM certificates found in tls.ca-file %q", opts.tlsCAFile)
+				}
 			} else {
 				return nil, err
 			}
@@ -1176,7 +1178,9 @@ func setup(
 		certPool := x509.NewCertPool()
 		if opts.serverTlsCAFile != "" {
 			if caCert, err := os.ReadFile(opts.serverTlsCAFile); err == nil {
-				certPool.AppendCertsFromPEM(caCert)
+				if !certPool.AppendCertsFromPEM(caCert) {
+					klog.Errorf("no PEM certificates found in server.tls.ca-file %q", opts.serverTlsCAFile)
+				}
 			} else {
 				klog.Error("error reading server ca")
 			}
