@@ -719,6 +719,11 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	// Even though we do another release below, this is fine (double release is a no-op).
 	defer pool.Release()
 
+	// Group tasks still running when ReleaseTimeout gives up must not send on ch
+	// once collect has returned: the caller closes it.
+	groupMetrics := &metricSink{ch: ch}
+	defer groupMetrics.close()
+
 	// broker should be opened before calling this function
 	getConsumerGroupMetrics := func(broker *sarama.Broker) {
 		defer wg.Done()
@@ -742,7 +747,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 
 		for _, group := range groupInfos {
 			err := pool.Submit(func() {
-				e.emitGroupMetrics(group, broker, offset, ch)
+				e.emitGroupMetrics(group, broker, offset, groupMetrics.send)
 			})
 			if err != nil {
 				klog.Errorf("Cannot submit task to pool: %v", err)
@@ -784,10 +789,34 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	}
 }
 
-func (e *Exporter) emitGroupMetrics(group consumerGroupInfo, broker *sarama.Broker, offsetMap map[string]map[int32]int64, ch chan<- prometheus.Metric) {
-	ch <- prometheus.MustNewConstMetric(
+// metricSink forwards metrics to a collect channel until it is closed, then
+// drops them.
+type metricSink struct {
+	mu     sync.RWMutex
+	ch     chan<- prometheus.Metric
+	closed bool
+}
+
+func (s *metricSink) send(m prometheus.Metric) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if !s.closed {
+		s.ch <- m
+	}
+}
+
+// close waits for sends in flight, which the collect channel's reader still
+// drains, and drops every later one.
+func (s *metricSink) close() {
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
+}
+
+func (e *Exporter) emitGroupMetrics(group consumerGroupInfo, broker *sarama.Broker, offsetMap map[string]map[int32]int64, send func(prometheus.Metric)) {
+	send(prometheus.MustNewConstMetric(
 		consumergroupMembers, prometheus.GaugeValue, float64(group.memberCount), group.id,
-	)
+	))
 
 	partitions := groupOffsetPartitions(group, offsetMap, e.offsetShowAll)
 	if !e.offsetShowAll && len(partitions) == 0 {
@@ -841,9 +870,9 @@ func (e *Exporter) emitGroupMetrics(group consumerGroupInfo, broker *sarama.Brok
 			if currentOffset != -1 {
 				currentOffsetSum += currentOffset
 			}
-			ch <- prometheus.MustNewConstMetric(
+			send(prometheus.MustNewConstMetric(
 				consumergroupCurrentOffset, prometheus.GaugeValue, float64(currentOffset), group.id, topic, strconv.FormatInt(int64(partition), 10),
-			)
+			))
 			currentPartitionOffset, currentPartitionOffsetError := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
 			if currentPartitionOffsetError != nil {
 				klog.Errorf("Cannot get current offset of topic %s partition %d: %v", topic, partition, currentPartitionOffsetError)
@@ -870,20 +899,20 @@ func (e *Exporter) emitGroupMetrics(group consumerGroupInfo, broker *sarama.Brok
 					lagSum += lag
 				}
 
-				ch <- prometheus.MustNewConstMetric(
+				send(prometheus.MustNewConstMetric(
 					consumergroupLag, prometheus.GaugeValue, float64(lag), group.id, topic, strconv.FormatInt(int64(partition), 10),
-				)
+				))
 			}
 		}
 		if deleted {
 			continue
 		}
-		ch <- prometheus.MustNewConstMetric(
+		send(prometheus.MustNewConstMetric(
 			consumergroupCurrentOffsetSum, prometheus.GaugeValue, float64(currentOffsetSum), group.id, topic,
-		)
-		ch <- prometheus.MustNewConstMetric(
+		))
+		send(prometheus.MustNewConstMetric(
 			consumergroupLagSum, prometheus.GaugeValue, float64(lagSum), group.id, topic,
-		)
+		))
 	}
 }
 
