@@ -87,7 +87,7 @@ func testGroupLagWithFailingTopic(t *testing.T, partitions, cachedLeader int32, 
 
 	e := &Exporter{client: client, offsetShowAll: true}
 	ch := make(chan prometheus.Metric, 1000)
-	e.emitGroupMetrics(consumerGroupInfo{id: "g"}, sarama.NewBroker(mock.Addr()), offsetMap, ch)
+	e.emitGroupMetrics(consumerGroupInfo{id: "g"}, sarama.NewBroker(mock.Addr()), offsetMap, func(m prometheus.Metric) { ch <- m })
 	close(ch)
 
 	var groupOffsetMetrics, lagMetrics, lagSums int32
