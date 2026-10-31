@@ -152,3 +152,26 @@ func TestNewExporter_SASLDefaultMechanism(t *testing.T) {
 		})
 	}
 }
+
+// A tls.ca-file without any PEM certificate must be rejected at startup
+// instead of leaving an empty root pool that fails every handshake with
+// "certificate signed by unknown authority".
+func TestNewExporter_TLSCAFileWithoutCertificates(t *testing.T) {
+	caFile := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(caFile, []byte("not a certificate\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := kafkaOpts{
+		uri:                     []string{"localhost:0"},
+		useTLS:                  true,
+		tlsCAFile:               caFile,
+		kafkaVersion:            "2.0.0",
+		metadataRefreshInterval: "30s",
+		groupMetricsTimeout:     "5m",
+	}
+	_, err := NewExporter(opts, ".*", "^$", ".*", "^$")
+	if err == nil || !strings.Contains(err.Error(), "no PEM certificates found") {
+		t.Fatalf("NewExporter error = %v, want a no PEM certificates error", err)
+	}
+}
