@@ -987,19 +987,26 @@ func main() {
 	kingpin.HelpFlag.Short('h')
 	kingpin.Parse()
 
-	labels := make(map[string]string)
-
-	// Protect against empty labels
-	if opts.labels != "" {
-		for _, label := range strings.Split(opts.labels, ",") {
-			splitted := strings.Split(label, "=")
-			if len(splitted) >= 2 {
-				labels[splitted[0]] = splitted[1]
-			}
-		}
-	}
+	labels := parseLabels(opts.labels)
 
 	setup(*listenAddress, *metricsPath, *topicFilter, *topicExclude, *groupFilter, *groupExclude, *logSarama, opts, labels)
+}
+
+// parseLabels parses the --kafka.labels value, a comma separated list of
+// name=value pairs. Only the first "=" separates the name from the value, so
+// values may contain "=". Entries without "=" are ignored.
+func parseLabels(s string) map[string]string {
+	labels := make(map[string]string)
+	if s == "" {
+		return labels
+	}
+	for _, label := range strings.Split(s, ",") {
+		name, value, ok := strings.Cut(label, "=")
+		if ok {
+			labels[name] = value
+		}
+	}
+	return labels
 }
 
 func newHTTPHandler(metricsPath string, metricsHandler http.Handler) http.Handler {
