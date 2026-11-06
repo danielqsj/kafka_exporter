@@ -2,6 +2,7 @@ package main
 
 import (
 	"regexp"
+	"sync"
 	"testing"
 	"time"
 
@@ -46,6 +47,7 @@ func TestCollectGroupMetricsTimeoutDoesNotSendAfterReturn(t *testing.T) {
 	const latency = 50 * time.Millisecond
 	mock.SetLatency(latency)
 
+	var groupTasks sync.WaitGroup
 	e := &Exporter{
 		client:              client,
 		topicFilter:         regexp.MustCompile(".*"),
@@ -57,14 +59,16 @@ func TestCollectGroupMetricsTimeoutDoesNotSendAfterReturn(t *testing.T) {
 		topicWorkers:        1,
 		groupWorkers:        1,
 		groupMetricsTimeout: time.Nanosecond,
+		groupTaskWG:         &groupTasks,
 	}
 	ch := make(chan prometheus.Metric, 1000)
 	e.collect(ch)
 	collected := len(ch)
 
-	// Give the abandoned group task time to get its offsets. Anything it sends
-	// now would go to a channel the registry has already closed.
-	time.Sleep(10 * latency)
+	// Wait for the abandoned group task to finish. Sleeping is not a barrier:
+	// a later test can call initGroupMetricDescs while this worker still reads
+	// those descriptors in emitGroupMetrics.
+	groupTasks.Wait()
 
 	if late := len(ch) - collected; late > 0 {
 		t.Fatalf("%d metrics were sent after collect returned", late)

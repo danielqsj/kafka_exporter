@@ -87,6 +87,9 @@ type Exporter struct {
 	sgChans                 []chan<- prometheus.Metric
 	consumerGroupFetchAll   bool
 	groupMetricsTimeout     time.Duration
+	// Optional: when set, tracks in-flight emitGroupMetrics ants tasks so tests
+	// can wait for workers abandoned after group.metrics-timeout.
+	groupTaskWG *sync.WaitGroup
 }
 
 type kafkaOpts struct {
@@ -746,10 +749,19 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 		}
 
 		for _, group := range groupInfos {
+			if e.groupTaskWG != nil {
+				e.groupTaskWG.Add(1)
+			}
 			err := pool.Submit(func() {
+				if e.groupTaskWG != nil {
+					defer e.groupTaskWG.Done()
+				}
 				e.emitGroupMetrics(group, broker, offset, groupMetrics.send)
 			})
 			if err != nil {
+				if e.groupTaskWG != nil {
+					e.groupTaskWG.Done()
+				}
 				klog.Errorf("Cannot submit task to pool: %v", err)
 				return
 			}
