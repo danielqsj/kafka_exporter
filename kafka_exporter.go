@@ -540,6 +540,10 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	klog.V(DEBUG).Infof("Took %v to get topics", time.Since(now))
 	klog.V(DEBUG).Infof("Found %v topics", len(topics))
 	topicChannel := make(chan string)
+	version := e.client.Config().Version
+	newestOffsets := newOffsetBatch(version, sarama.OffsetNewest)
+	oldestOffsets := newOffsetBatch(version, sarama.OffsetOldest)
+	meta := newCollectMetadata(e.client)
 
 	getTopicMetrics := func(topic string) {
 		defer wg.Done()
@@ -566,10 +570,15 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 				return false
 			}
 			klog.Warningf("Topic %s no longer exists, skipping its remaining partitions", topic)
+			meta.markDeleted(topic)
 			return true
 		}
 		for _, partition := range partitions {
-			broker, err := e.client.Leader(topic, partition)
+			var broker *sarama.Broker
+			var err error = sarama.ErrLeaderNotAvailable
+			if meta.hasLeader(topic, partition) {
+				broker, err = e.client.Leader(topic, partition)
+			}
 			if err != nil {
 				klog.Errorf("Cannot get leader of topic %s partition %d: %v", topic, partition, err)
 				if topicGone(err) {
@@ -579,33 +588,8 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 				ch <- prometheus.MustNewConstMetric(
 					topicPartitionLeader, prometheus.GaugeValue, float64(broker.ID()), topic, strconv.FormatInt(int64(partition), 10),
 				)
-			}
-
-			currentOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
-			if err != nil {
-				klog.Errorf("Cannot get current offset of topic %s partition %d: %v", topic, partition, err)
-				if topicGone(err) {
-					return
-				}
-			} else {
-				e.mu.Lock()
-				offset[topic][partition] = currentOffset
-				e.mu.Unlock()
-				ch <- prometheus.MustNewConstMetric(
-					topicCurrentOffset, prometheus.GaugeValue, float64(currentOffset), topic, strconv.FormatInt(int64(partition), 10),
-				)
-			}
-
-			oldestOffset, err := e.client.GetOffset(topic, partition, sarama.OffsetOldest)
-			if err != nil {
-				klog.Errorf("Cannot get oldest offset of topic %s partition %d: %v", topic, partition, err)
-				if topicGone(err) {
-					return
-				}
-			} else {
-				ch <- prometheus.MustNewConstMetric(
-					topicOldestOffset, prometheus.GaugeValue, float64(oldestOffset), topic, strconv.FormatInt(int64(partition), 10),
-				)
+				newestOffsets.add(broker, topic, partition)
+				oldestOffsets.add(broker, topic, partition)
 			}
 
 			replicas, err := e.client.Replicas(topic, partition)
@@ -651,24 +635,6 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 					topicUnderReplicatedPartition, prometheus.GaugeValue, float64(0), topic, strconv.FormatInt(int64(partition), 10),
 				)
 			}
-
-			if e.useZooKeeperLag {
-				ConsumerGroups, err := e.zookeeperClient.Consumergroups()
-				if err != nil {
-					klog.Errorf("Cannot get consumer group %v", err)
-				}
-
-				for _, group := range ConsumerGroups {
-					offset, _ := group.FetchOffset(topic, partition)
-					if offset > 0 {
-
-						consumerGroupLag := currentOffset - offset
-						ch <- prometheus.MustNewConstMetric(
-							consumergroupLagZookeeper, prometheus.GaugeValue, float64(consumerGroupLag), group.Name, topic, strconv.FormatInt(int64(partition), 10),
-						)
-					}
-				}
-			}
 		}
 	}
 
@@ -712,6 +678,48 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	wg.Wait()
 	klog.V(DEBUG).Infof("Took %v to get topic metrics", time.Since(now))
 
+	now = time.Now()
+	results := e.fetchOffsets(meta, newestOffsets, oldestOffsets)
+	newest, oldest := results[0], results[1]
+	klog.V(DEBUG).Infof("Took %v to get topic offsets", time.Since(now))
+
+	for topic, partitions := range newest.offsets {
+		for partition, currentOffset := range partitions {
+			offset[topic][partition] = currentOffset
+			ch <- prometheus.MustNewConstMetric(
+				topicCurrentOffset, prometheus.GaugeValue, float64(currentOffset), topic, strconv.FormatInt(int64(partition), 10),
+			)
+		}
+	}
+	for topic, partitions := range oldest.offsets {
+		for partition, oldestOffset := range partitions {
+			ch <- prometheus.MustNewConstMetric(
+				topicOldestOffset, prometheus.GaugeValue, float64(oldestOffset), topic, strconv.FormatInt(int64(partition), 10),
+			)
+		}
+	}
+
+	if e.useZooKeeperLag {
+		for topic, partitions := range newest.offsets {
+			for partition, currentOffset := range partitions {
+				ConsumerGroups, err := e.zookeeperClient.Consumergroups()
+				if err != nil {
+					klog.Errorf("Cannot get consumer group %v", err)
+				}
+
+				for _, group := range ConsumerGroups {
+					offset, _ := group.FetchOffset(topic, partition)
+					if offset > 0 {
+						consumerGroupLag := currentOffset - offset
+						ch <- prometheus.MustNewConstMetric(
+							consumergroupLagZookeeper, prometheus.GaugeValue, float64(consumerGroupLag), group.Name, topic, strconv.FormatInt(int64(partition), 10),
+						)
+					}
+				}
+			}
+		}
+	}
+
 	pool, err := ants.NewPool(e.groupWorkers)
 	if err != nil {
 		klog.Errorf("Cannot create pool: %v", err)
@@ -744,7 +752,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 
 		for _, group := range groupInfos {
 			err := pool.Submit(func() {
-				e.emitGroupMetrics(group, broker, offset, ch)
+				e.emitGroupMetricsIn(meta, group, broker, offset, ch)
 			})
 			if err != nil {
 				klog.Errorf("Cannot submit task to pool: %v", err)
@@ -787,6 +795,10 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 }
 
 func (e *Exporter) emitGroupMetrics(group consumerGroupInfo, broker *sarama.Broker, offsetMap map[string]map[int32]int64, ch chan<- prometheus.Metric) {
+	e.emitGroupMetricsIn(newCollectMetadata(e.client), group, broker, offsetMap, ch)
+}
+
+func (e *Exporter) emitGroupMetricsIn(meta *collectMetadata, group consumerGroupInfo, broker *sarama.Broker, offsetMap map[string]map[int32]int64, ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(
 		consumergroupMembers, prometheus.GaugeValue, float64(group.memberCount), group.id,
 	)
@@ -816,23 +828,58 @@ func (e *Exporter) emitGroupMetrics(group consumerGroupInfo, broker *sarama.Brok
 		return
 	}
 
+	consumed := make(map[string]map[int32]*sarama.OffsetFetchResponseBlock)
 	for topic, partitions := range offsetFetchResponse.Blocks {
 		// If the topic is not consumed by that consumer group, skip it
-		topicConsumed := false
 		for _, offsetFetchResponseBlock := range partitions {
 			// Kafka will return -1 if there is no offset associated with a topic-partition under that consumer group
 			if offsetFetchResponseBlock.Offset != -1 {
-				topicConsumed = true
+				consumed[topic] = partitions
 				break
 			}
 		}
-		if !topicConsumed {
+	}
+
+	// The newest offsets are read after the group's, so lag is not negative.
+	newestOffsets := newOffsetBatch(e.client.Config().Version, sarama.OffsetNewest)
+	deleted := make(map[string]bool)
+	for topic, partitions := range consumed {
+		if meta.isDeleted(topic) {
+			deleted[topic] = true
 			continue
 		}
+		for partition, offsetFetchResponseBlock := range partitions {
+			if offsetFetchResponseBlock.Err != sarama.ErrNoError || !meta.hasLeader(topic, partition) {
+				continue
+			}
+			leader, err := e.client.Leader(topic, partition)
+			if err != nil {
+				klog.Errorf("Cannot get leader of topic %s partition %d: %v", topic, partition, err)
+				// A group's offsets for a deleted topic still reach this loop; without
+				// this, every partition repeats the metadata retries.
+				if e.topicGone(topic, err) {
+					klog.Warningf("Topic %s no longer exists, skipping its remaining partitions for group %s", topic, group.id)
+					meta.markDeleted(topic)
+					deleted[topic] = true
+					break
+				}
+				continue
+			}
+			newestOffsets.add(leader, topic, partition)
+		}
+	}
+	newest := e.fetchOffsets(meta, newestOffsets)[0]
+	for topic, err := range newest.errs {
+		if !deleted[topic] && (meta.isDeleted(topic) || e.topicGone(topic, err)) {
+			klog.Warningf("Topic %s no longer exists, skipping its lag for group %s", topic, group.id)
+			meta.markDeleted(topic)
+			deleted[topic] = true
+		}
+	}
 
+	for topic, partitions := range consumed {
 		var currentOffsetSum int64
 		var lagSum int64
-		deleted := false
 		for partition, offsetFetchResponseBlock := range partitions {
 			err := offsetFetchResponseBlock.Err
 			if err != sarama.ErrNoError {
@@ -846,38 +893,33 @@ func (e *Exporter) emitGroupMetrics(group consumerGroupInfo, broker *sarama.Brok
 			ch <- prometheus.MustNewConstMetric(
 				consumergroupCurrentOffset, prometheus.GaugeValue, float64(currentOffset), group.id, topic, strconv.FormatInt(int64(partition), 10),
 			)
-			currentPartitionOffset, currentPartitionOffsetError := e.client.GetOffset(topic, partition, sarama.OffsetNewest)
-			if currentPartitionOffsetError != nil {
-				klog.Errorf("Cannot get current offset of topic %s partition %d: %v", topic, partition, currentPartitionOffsetError)
-				// A group's offsets for a deleted topic still reach this loop; without
-				// this, every partition repeats the metadata retries.
-				if e.topicGone(topic, currentPartitionOffsetError) {
-					klog.Warningf("Topic %s no longer exists, skipping its remaining partitions for group %s", topic, group.id)
-					deleted = true
-					break
-				}
-			} else {
-				var lag int64
-				if offsetFetchResponseBlock.Offset == -1 {
-					lag = -1
-				} else {
-					// writes to the offset map are only performed in getTopicMetrics(), which is guaranteed to be done before this point
-					// no mutex required for concurrent reads
-					if offset, ok := offsetMap[topic][partition]; ok {
-						if currentPartitionOffset == -1 {
-							currentPartitionOffset = offset
-						}
-					}
-					lag = currentPartitionOffset - offsetFetchResponseBlock.Offset
-					lagSum += lag
-				}
-
-				ch <- prometheus.MustNewConstMetric(
-					consumergroupLag, prometheus.GaugeValue, float64(lag), group.id, topic, strconv.FormatInt(int64(partition), 10),
-				)
+			if deleted[topic] {
+				continue
 			}
+			currentPartitionOffset, ok := newest.offsets[topic][partition]
+			if !ok {
+				continue
+			}
+			var lag int64
+			if offsetFetchResponseBlock.Offset == -1 {
+				lag = -1
+			} else {
+				// writes to the offset map are only performed in the topic phase of collect(), which is guaranteed to be done before this point
+				// no mutex required for concurrent reads
+				if offset, ok := offsetMap[topic][partition]; ok {
+					if currentPartitionOffset == -1 {
+						currentPartitionOffset = offset
+					}
+				}
+				lag = currentPartitionOffset - offsetFetchResponseBlock.Offset
+				lagSum += lag
+			}
+
+			ch <- prometheus.MustNewConstMetric(
+				consumergroupLag, prometheus.GaugeValue, float64(lag), group.id, topic, strconv.FormatInt(int64(partition), 10),
+			)
 		}
-		if deleted {
+		if deleted[topic] {
 			continue
 		}
 		ch <- prometheus.MustNewConstMetric(
