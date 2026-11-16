@@ -57,6 +57,8 @@ var (
 	topicPartitionInSyncReplicas       *prometheus.Desc
 	topicPartitionUsesPreferredReplica *prometheus.Desc
 	topicUnderReplicatedPartition      *prometheus.Desc
+	topicConfig                        *prometheus.Desc
+	topicConfigInfo                    *prometheus.Desc
 	consumergroupCurrentOffset         *prometheus.Desc
 	consumergroupCurrentOffsetSum      *prometheus.Desc
 	consumergroupLag                   *prometheus.Desc
@@ -87,6 +89,8 @@ type Exporter struct {
 	sgChans                 []chan<- prometheus.Metric
 	consumerGroupFetchAll   bool
 	groupMetricsTimeout     time.Duration
+	topicConfigs            []string
+	admin                   topicConfigDescriber
 }
 
 type kafkaOpts struct {
@@ -129,6 +133,7 @@ type kafkaOpts struct {
 	allowAutoTopicCreation   bool
 	verbosityLogLevel        int
 	groupMetricsTimeout      string
+	topicConfigs             []string
 }
 
 type MSKAccessTokenProvider struct {
@@ -384,6 +389,16 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 		return nil, fmt.Errorf("Error Init Kafka Client: %w", err)
 	}
 
+	topicConfigs := normalizeTopicConfigs(opts.topicConfigs)
+	var admin topicConfigDescriber
+	if len(topicConfigs) > 0 {
+		clusterAdmin, err := sarama.NewClusterAdminFromClient(client)
+		if err != nil {
+			return nil, fmt.Errorf("Error Init Kafka Admin Client: %w", err)
+		}
+		admin = clusterAdmin
+	}
+
 	klog.V(TRACE).Infoln("Done Init Clients")
 	// Init our exporter.
 	return &Exporter{
@@ -405,6 +420,8 @@ func NewExporter(opts kafkaOpts, topicFilter string, topicExclude string, groupF
 		sgChans:                 []chan<- prometheus.Metric{},
 		consumerGroupFetchAll:   config.Version.IsAtLeast(sarama.V2_0_0_0),
 		groupMetricsTimeout:     groupMetricsTimeout,
+		topicConfigs:            topicConfigs,
+		admin:                   admin,
 	}, nil
 }
 
@@ -432,6 +449,8 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- topicPartitionInSyncReplicas
 	ch <- topicPartitionUsesPreferredReplica
 	ch <- topicUnderReplicatedPartition
+	ch <- topicConfig
+	ch <- topicConfigInfo
 	ch <- consumergroupCurrentOffset
 	ch <- consumergroupCurrentOffsetSum
 	ch <- consumergroupLag
@@ -712,6 +731,12 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) {
 	wg.Wait()
 	klog.V(DEBUG).Infof("Took %v to get topic metrics", time.Since(now))
 
+	if len(e.topicConfigs) > 0 {
+		now = time.Now()
+		e.collectTopicConfigs(ch, topics)
+		klog.V(DEBUG).Infof("Took %v to get topic configs", time.Since(now))
+	}
+
 	pool, err := ants.NewPool(e.groupWorkers)
 	if err != nil {
 		klog.Errorf("Cannot create pool: %v", err)
@@ -981,6 +1006,7 @@ func main() {
 	toFlagIntVar("group.workers", "Number of consumer group workers", 100, "100", &opts.groupWorkers)
 	toFlagBoolVar("kafka.allow-auto-topic-creation", "If true, the broker may auto-create topics that we requested which do not already exist, default is false.", false, "false", &opts.allowAutoTopicCreation)
 	toFlagIntVar("verbosity", "Verbosity log level", 0, "0", &opts.verbosityLogLevel)
+	toFlagStringsVar("topic.config", "Topic configuration to export as kafka_topic_config, e.g. retention.ms. Can be repeated. Nothing is exported when not set.", "", &opts.topicConfigs)
 	toFlagStringVar("group.metrics.timeout", "Timeout for emitting consumer group metrics", "5m", &opts.groupMetricsTimeout)
 
 	plConfig := plog.Config{}
@@ -1118,6 +1144,18 @@ func setup(
 		prometheus.BuildFQName(namespace, "topic", "partition_under_replicated_partition"),
 		"1 if Topic/Partition is under Replicated",
 		[]string{"topic", "partition"}, labels,
+	)
+
+	topicConfig = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "topic", "config"),
+		"Value of a numeric Topic configuration, e.g. retention.ms",
+		[]string{"topic", "config"}, labels,
+	)
+
+	topicConfigInfo = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "topic", "config_info"),
+		"Value of a non-numeric Topic configuration, e.g. cleanup.policy",
+		[]string{"topic", "config", "value"}, labels,
 	)
 
 	consumergroupCurrentOffset = prometheus.NewDesc(

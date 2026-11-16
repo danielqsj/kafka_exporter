@@ -138,6 +138,7 @@ This image is configurable using different flags
 | server.tls.key-file            |                | The key file for the web server                                                                                                                |
 | topic.filter                   | .*             | Regex that determines which topics to collect                                                                                                  |
 | topic.exclude                  | ^$             | Regex that determines which topics to exclude                                                                                                  |
+| topic.config                   |                | Topic configuration to export as `kafka_topic_config`, e.g. `retention.ms`. Can be repeated or comma separated. Nothing is exported when not set |
 | group.filter                   | .*             | Regex that determines which consumer groups to collect                                                                                         |
 | group.exclude                  | ^$             | Regex that determines which consumer groups to exclude                                                                                         |
 | web.listen-address             | :9308          | Address to listen on for web interface and telemetry                                                                                           |
@@ -208,6 +209,8 @@ Describe all topics.
 | `kafka_topic_partition_leader_is_preferred`        | 1 if Topic/Partition is using the Preferred Broker  |
 | `kafka_topic_partition_replicas`                   | Number of Replicas for this Topic/Partition         |
 | `kafka_topic_partition_under_replicated_partition` | 1 if Topic/Partition is under Replicated            |
+| `kafka_topic_config`                               | Value of a numeric Topic configuration, one series per topic and `config` (only for configs set with `--topic.config`) |
+| `kafka_topic_config_info`                          | Non-numeric Topic configuration such as `cleanup.policy`, the value is in the `value` label and the series is always 1 |
 
 **Metrics output example**
 
@@ -244,6 +247,23 @@ kafka_topic_partition_replicas{partition="0",topic="__consumer_offsets"} 3
 # TYPE kafka_topic_partition_under_replicated_partition gauge
 kafka_topic_partition_under_replicated_partition{partition="0",topic="__consumer_offsets"} 0
 ```
+
+With `--topic.config=retention.ms --topic.config=retention.bytes --topic.config=cleanup.policy`:
+
+```txt
+# HELP kafka_topic_config Value of a numeric Topic configuration, e.g. retention.ms
+# TYPE kafka_topic_config gauge
+kafka_topic_config{config="retention.bytes",topic="__consumer_offsets"} -1
+kafka_topic_config{config="retention.ms",topic="__consumer_offsets"} 6.048e+08
+
+# HELP kafka_topic_config_info Value of a non-numeric Topic configuration, e.g. cleanup.policy
+# TYPE kafka_topic_config_info gauge
+kafka_topic_config_info{config="cleanup.policy",topic="__consumer_offsets",value="compact"} 1
+```
+
+The configs are read with one `DescribeConfigs` request per 100 topics on each scrape, and the number of series
+is the number of topics times the number of configs listed in `--topic.config`. The effective value is exported,
+including broker defaults, so a topic without an override reports the broker setting.
 
 ### Consumer Groups
 
