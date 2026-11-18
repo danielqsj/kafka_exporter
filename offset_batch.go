@@ -136,14 +136,19 @@ func (b *offsetBatch) fetch() offsetBatchResult {
 }
 
 // fetchOffsets fetches the batches, refreshes the metadata of every topic with
-// a failed partition unless it was refreshed since this fetch began, then asks
-// the refreshed leaders again for the failed partitions of topics that still
-// exist, as client.GetOffset retried after its refresh. A topic left in errs
-// still has partitions without an offset.
+// a failed partition unless it was refreshed since this fetch began (or since
+// its failure was seen, if the cache still names the broker that failed), then
+// asks the refreshed leaders again for the failed partitions of topics that
+// still exist, as client.GetOffset retried after its refresh. A topic left in
+// errs still has partitions without an offset.
 func (e *Exporter) fetchOffsets(meta *collectMetadata, batches ...*offsetBatch) []offsetBatchResult {
-	generations := meta.generations(batches)
-	results := fetchAll(batches)
+	began := meta.generations(batches)
+	return e.retryFailed(meta, batches, fetchAll(batches), began)
+}
 
+// retryFailed refreshes and retries the failed partitions of fetched batches;
+// began holds each topic's generation from before the batches were sent.
+func (e *Exporter) retryFailed(meta *collectMetadata, batches []*offsetBatch, results []offsetBatchResult, began map[string]int) []offsetBatchResult {
 	var failing []string
 	seen := make(map[string]bool)
 	for _, result := range results {
@@ -157,9 +162,9 @@ func (e *Exporter) fetchOffsets(meta *collectMetadata, batches ...*offsetBatch) 
 	if len(failing) == 0 {
 		return results
 	}
-	meta.refresh(failing, generations)
-	// the metadata the retry's leaders are looked up in
-	lookedUp := meta.generationsOf(failing)
+	// when the failures were seen: a refresh started before then may predate their cause
+	observed := meta.generationsOf(failing)
+	meta.refresh(failing, began)
 
 	// A leader lookup that misses the cache refreshes metadata itself, so each
 	// partition is looked up once for all batches, and a topic is given up at its
@@ -187,11 +192,57 @@ func (e *Exporter) fetchOffsets(meta *collectMetadata, batches ...*offsetBatch) 
 		leaders[key] = leader
 		return leader
 	}
+	missing := make([]map[string][]int32, len(batches))
+	for i, batch := range batches {
+		missing[i] = batch.missing(results[i])
+	}
+
+	// The refresh above is skipped when another started after these batches were
+	// sent, but that one may have read metadata from before the leader moved. If
+	// the cache still names the broker that failed, refresh again, unless a
+	// refresh has started since the failure was seen.
+	var recheck []string
+	for _, topic := range failing {
+		if e.topicGone(topic, sarama.ErrUnknownTopicOrPartition) {
+			continue
+		}
+		resolved, sameBroker := 0, 0
+		for i := range batches {
+			for _, partition := range missing[i][topic] {
+				failed, ok := results[i].failedOn[topic][partition]
+				if !ok {
+					continue
+				}
+				if leader := leaderOf(topic, partition); leader != nil {
+					resolved++
+					if leader.ID() == failed {
+						sameBroker++
+					}
+				}
+			}
+		}
+		if resolved > 0 && sameBroker == resolved {
+			recheck = append(recheck, topic)
+		}
+	}
+	if len(recheck) > 0 {
+		meta.refresh(recheck, observed)
+		for key := range leaders {
+			if slices.Contains(recheck, key.topic) {
+				delete(leaders, key)
+			}
+		}
+		for _, topic := range recheck {
+			delete(unresolved, topic)
+		}
+	}
+	// the metadata the retry's leaders are looked up in
+	lookedUp := meta.generationsOf(failing)
 
 	retries := make([]*offsetBatch, len(batches))
 	for i, batch := range batches {
 		retries[i] = newOffsetBatch(batch.version, batch.timestamp)
-		for topic, partitions := range batch.missing(results[i]) {
+		for topic, partitions := range missing[i] {
 			if e.topicGone(topic, sarama.ErrUnknownTopicOrPartition) {
 				// The failure may have said NOT_LEADER or EOF; callers recognise a
 				// deleted topic by this error.
@@ -223,7 +274,7 @@ func (e *Exporter) fetchOffsets(meta *collectMetadata, batches ...*offsetBatch) 
 				}
 			}
 			if resolved > 0 && sameBroker == resolved {
-				meta.markDisagrees(topic, generations[topic], lookedUp[topic])
+				meta.markDisagrees(topic, observed[topic], lookedUp[topic])
 			}
 		}
 	}
@@ -414,12 +465,12 @@ func (m *collectMetadata) refresh(topics []string, seen map[string]int) {
 	}
 }
 
-// markDisagrees records that metadata refreshed after the fetch began (at
+// markDisagrees records that metadata refreshed after the failure was seen (at
 // generation seen) still names the broker that failed, as looked up at
-// generation lookedUp. A retry that used only the cache it already had is no
-// new evidence, and does not restart the backoff; nor is one whose metadata was
-// refreshed again after its lookups, since the newer metadata may name another
-// leader.
+// generation lookedUp. A retry that used only metadata from before the failure
+// is no new evidence, and does not restart the backoff; nor is one whose
+// metadata was refreshed again after its lookups, since the newer metadata may
+// name another leader.
 func (m *collectMetadata) markDisagrees(topic string, seen, lookedUp int) {
 	t := m.topic(topic)
 	t.mu.Lock()
