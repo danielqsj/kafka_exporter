@@ -4,6 +4,7 @@ import (
 	"errors"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/IBM/sarama"
 	"k8s.io/klog/v2"
@@ -26,6 +27,8 @@ type offsetBatchResult struct {
 	// The first error seen per topic. sarama.ErrUnknownTopicOrPartition wins,
 	// since it is the one that can mean the topic was deleted.
 	errs map[string]error
+	// the broker each failed partition was asked
+	failedOn map[string]map[int32]int32
 }
 
 func newOffsetBatch(version sarama.KafkaVersion, timestamp int64) *offsetBatch {
@@ -58,14 +61,19 @@ func (b *offsetBatch) add(leader *sarama.Broker, topic string, partition int32) 
 // offset in the result has its topic's error in errs.
 func (b *offsetBatch) fetch() offsetBatchResult {
 	result := offsetBatchResult{
-		offsets: make(map[string]map[int32]int64),
-		errs:    make(map[string]error),
+		offsets:  make(map[string]map[int32]int64),
+		errs:     make(map[string]error),
+		failedOn: make(map[string]map[int32]int32),
 	}
 	var mu sync.Mutex
-	setErr := func(topic string, err error) {
+	setErr := func(topic string, partition, broker int32, err error) {
 		if prev, ok := result.errs[topic]; !ok || (!errors.Is(prev, sarama.ErrUnknownTopicOrPartition) && errors.Is(err, sarama.ErrUnknownTopicOrPartition)) {
 			result.errs[topic] = err
 		}
+		if result.failedOn[topic] == nil {
+			result.failedOn[topic] = make(map[int32]int32)
+		}
+		result.failedOn[topic][partition] = broker
 	}
 
 	var wg sync.WaitGroup
@@ -81,8 +89,10 @@ func (b *offsetBatch) fetch() offsetBatchResult {
 				klog.Errorf("Cannot get offsets from broker %d: %v", id, err)
 				// as client.GetOffset does, so the next request reconnects
 				_ = broker.Close()
-				for topic := range b.requested[id] {
-					setErr(topic, err)
+				for topic, partitions := range b.requested[id] {
+					for _, partition := range partitions {
+						setErr(topic, partition, id, err)
+					}
 				}
 				return
 			}
@@ -113,7 +123,7 @@ func (b *offsetBatch) fetch() offsetBatchResult {
 						failed[topic] = &failure{err: err}
 					}
 					failed[topic].count++
-					setErr(topic, err)
+					setErr(topic, partition, id, err)
 				}
 			}
 			for topic, f := range failed {
@@ -126,10 +136,12 @@ func (b *offsetBatch) fetch() offsetBatchResult {
 }
 
 // fetchOffsets fetches the batches, refreshes the metadata of every topic with
-// a failed partition (once per collect), then asks the refreshed leaders again for the failed
-// partitions of topics that still exist, as client.GetOffset retried after its
-// refresh. A topic left in errs still has partitions without an offset.
+// a failed partition unless it was refreshed since this fetch began, then asks
+// the refreshed leaders again for the failed partitions of topics that still
+// exist, as client.GetOffset retried after its refresh. A topic left in errs
+// still has partitions without an offset.
 func (e *Exporter) fetchOffsets(meta *collectMetadata, batches ...*offsetBatch) []offsetBatchResult {
+	generations := meta.generations(batches)
 	results := fetchAll(batches)
 
 	var failing []string
@@ -145,7 +157,9 @@ func (e *Exporter) fetchOffsets(meta *collectMetadata, batches ...*offsetBatch) 
 	if len(failing) == 0 {
 		return results
 	}
-	meta.refresh(failing)
+	meta.refresh(failing, generations)
+	// the metadata the retry's leaders are looked up in
+	lookedUp := meta.generationsOf(failing)
 
 	// A leader lookup that misses the cache refreshes metadata itself, so each
 	// partition is looked up once for all batches, and a topic is given up at its
@@ -186,17 +200,30 @@ func (e *Exporter) fetchOffsets(meta *collectMetadata, batches ...*offsetBatch) 
 				continue
 			}
 			// cached partitions only, so an unknown one costs no further refresh
-			known, err := e.client.Partitions(topic)
+			cached, err := e.client.Partitions(topic)
 			if err != nil {
 				continue
 			}
+			known := make(map[int32]bool, len(cached))
+			for _, partition := range cached {
+				known[partition] = true
+			}
+			// still asking the broker that failed: metadata disagrees with it
+			resolved, sameBroker := 0, 0
 			for _, partition := range partitions {
-				if !slices.Contains(known, partition) {
+				if !known[partition] {
 					continue
 				}
 				if leader := leaderOf(topic, partition); leader != nil {
 					retries[i].add(leader, topic, partition)
+					resolved++
+					if failed, ok := results[i].failedOn[topic][partition]; ok && failed == leader.ID() {
+						sameBroker++
+					}
 				}
+			}
+			if resolved > 0 && sameBroker == resolved {
+				meta.markDisagrees(topic, generations[topic], lookedUp[topic])
 			}
 		}
 	}
@@ -260,29 +287,50 @@ func (r *offsetBatchResult) merge(original *offsetBatch, retried offsetBatchResu
 }
 
 // collectMetadata is one collect's view of metadata, shared by the topic walk
-// and every consumer group: a topic is refreshed at most once per collect, and
+// and every consumer group: a failing topic is refreshed only if no refresh
+// happened since the failed fetch began and, once a refresh still named the
+// broker that failed (metadata disagrees with the broker), not again until
+// sarama's metadata retry backoff has passed, and
 // which of its partitions have a leader is read once from the cache, because a
 // leader lookup for a leaderless partition refreshes metadata every time. Locks
 // are per topic, so a slow refresh of one topic does not hold up the others.
 type collectMetadata struct {
-	client sarama.Client
+	backoff time.Duration
+	now     func() time.Time
+	client  sarama.Client
 
 	mu     sync.Mutex
 	topics map[string]*topicMetadata
 }
 
 type topicMetadata struct {
-	mu        sync.Mutex
-	refreshed bool
+	mu sync.Mutex
+	// refreshes of this topic so far in the collect
+	generation int
+	// when a refresh, of generation disagreedGen, still named the broker that
+	// failed: no refresh until the backoff has passed
+	disagreedAt  time.Time
+	disagreedGen int
+	// the leader check refreshed: it does so at most once per collect
+	leaderRefreshed bool
 	// confirmed deleted in this collect: later groups skip it without lookups
 	deleted bool
 	read    bool
 	// nil when the partitions could not be read: callers look the leader up as before
 	withLeader map[int32]bool
+	// every partition in the cache when withLeader was read
+	known map[int32]bool
+	// a partition missing from the cache refreshed the topic: at most once per collect
+	unknownRefreshed bool
 }
 
 func newCollectMetadata(client sarama.Client) *collectMetadata {
-	return &collectMetadata{client: client, topics: make(map[string]*topicMetadata)}
+	return &collectMetadata{
+		backoff: client.Config().Metadata.Retry.Backoff,
+		now:     time.Now,
+		client:  client,
+		topics:  make(map[string]*topicMetadata),
+	}
 }
 
 func (m *collectMetadata) topic(name string) *topicMetadata {
@@ -296,59 +344,186 @@ func (m *collectMetadata) topic(name string) *topicMetadata {
 	return t
 }
 
-// refresh refreshes the topics not yet refreshed in this collect, in one
-// request. Callers for the same topic wait for it, so the cache they read
-// afterwards is fresh.
-func (m *collectMetadata) refresh(topics []string) {
+// generations returns the refresh generation of every topic in the batches.
+func (m *collectMetadata) generations(batches []*offsetBatch) map[string]int {
+	var topics []string
+	for _, batch := range batches {
+		for _, requested := range batch.requested {
+			for topic := range requested {
+				topics = append(topics, topic)
+			}
+		}
+	}
+	return m.generationsOf(topics)
+}
+
+// generationsOf returns the refresh generation of each topic.
+func (m *collectMetadata) generationsOf(topics []string) map[string]int {
+	seen := make(map[string]int, len(topics))
+	for _, topic := range topics {
+		if _, ok := seen[topic]; !ok {
+			t := m.topic(topic)
+			t.mu.Lock()
+			seen[topic] = t.generation
+			t.mu.Unlock()
+		}
+	}
+	return seen
+}
+
+// refresh refreshes, in one request, the topics not refreshed since the
+// generation in seen and not found, within the backoff, to disagree with their
+// brokers. Callers for
+// the same topic wait for it, so the cache they read afterwards is fresh.
+func (m *collectMetadata) refresh(topics []string, seen map[string]int) {
 	names := slices.Clone(topics)
 	slices.Sort(names)
 	names = slices.Compact(names)
 	var stale []string
+	refreshed := make(map[string]*topicMetadata)
 	for _, name := range names {
 		// sorted, so concurrent callers lock in the same order
 		t := m.topic(name)
 		t.mu.Lock()
 		defer t.mu.Unlock()
-		if !t.refreshed {
-			t.refreshed = true
+		if t.generation == seen[name] && (t.disagreedAt.IsZero() || m.now().Sub(t.disagreedAt) >= m.backoff) {
+			t.generation++
 			t.read = false
 			stale = append(stale, name)
+			refreshed[name] = t
 		}
 	}
 	if len(stale) == 0 {
 		return
 	}
-	if err := m.client.RefreshMetadata(stale...); err != nil {
-		klog.Errorf("Cannot refresh metadata of topics %v: %v", stale, err)
+	err := m.client.RefreshMetadata(stale...)
+	if err == nil {
+		return
+	}
+	klog.Errorf("Cannot refresh metadata of topics %v: %v", stale, err)
+	// The retry treats a topic the refresh left out of the cache as deleted
+	// (topicGone); mark it here, while the locks are held, so a leader check
+	// waiting on one skips the topic instead of refreshing it again.
+	if known, err := m.client.Topics(); err == nil {
+		for name, t := range refreshed {
+			if !t.deleted && !slices.Contains(known, name) {
+				klog.Warningf("Topic %s no longer exists, skipping it for the rest of this scrape", name)
+				t.deleted = true
+			}
+		}
+	}
+}
+
+// markDisagrees records that metadata refreshed after the fetch began (at
+// generation seen) still names the broker that failed, as looked up at
+// generation lookedUp. A retry that used only the cache it already had is no
+// new evidence, and does not restart the backoff; nor is one whose metadata was
+// refreshed again after its lookups, since the newer metadata may name another
+// leader.
+func (m *collectMetadata) markDisagrees(topic string, seen, lookedUp int) {
+	t := m.topic(topic)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if lookedUp != seen && t.generation == lookedUp && t.disagreedGen != lookedUp {
+		t.disagreedGen = t.generation
+		t.disagreedAt = m.now()
 	}
 }
 
 // hasLeader reports whether the cached metadata gives the partition a leader.
 // Kafka marks a leaderless partition LEADER_NOT_AVAILABLE, and
-// WritablePartitions leaves those out from the cache; it refreshes only when
-// the topic has no partition with a leader at all.
+// WritablePartitions leaves those out from the cache. A topic with some
+// leaderless partitions is refreshed once per collect before they are skipped,
+// so a leader elected since is used, as client.GetOffset's refresh did; so is a
+// topic asked about a partition the cache doesn't list at all. Neither refresh
+// uses up refresh's, which a failed fetch still needs.
 func (m *collectMetadata) hasLeader(topic string, partition int32) bool {
 	t := m.topic(topic)
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.deleted {
+		return false
+	}
 	if !t.read {
 		t.read = true
-		t.withLeader = nil
-		writable, err := m.client.WritablePartitions(topic)
-		if errors.Is(err, sarama.ErrLeaderNotAvailable) {
-			// A topic with no leader in the cache is refreshed, and that refresh fails
-			// while any partition is still leaderless, even if others recovered: read
-			// once more, from the cache unless none recovered.
-			writable, err = m.client.WritablePartitions(topic)
+		var refreshed bool
+		t.withLeader, refreshed = m.readWithLeader(topic)
+		t.leaderRefreshed = t.leaderRefreshed || refreshed
+		if refreshed {
+			t.generation++
 		}
-		if err == nil || errors.Is(err, sarama.ErrLeaderNotAvailable) {
-			t.withLeader = make(map[int32]bool, len(writable))
-			for _, p := range writable {
-				t.withLeader[p] = true
-			}
+		t.known = m.cachedPartitions(topic, t.withLeader)
+		if t.withLeader != nil && !t.leaderRefreshed && t.known != nil && len(t.withLeader) < len(t.known) {
+			t.leaderRefreshed = true
+			m.refreshForLeaderCheck(t, topic)
 		}
 	}
+	// Not leaderless, just missing from the cache: the topic may have gained
+	// partitions since it was cached, and a consumer group can already be
+	// assigned them. Refresh once, as client.GetOffset's cache miss did.
+	if t.known != nil && !t.withLeader[partition] && !t.known[partition] && !t.unknownRefreshed {
+		t.unknownRefreshed = true
+		m.refreshForLeaderCheck(t, topic)
+	}
 	return !t.deleted && (t.withLeader == nil || t.withLeader[partition])
+}
+
+// refreshForLeaderCheck refreshes topic and re-reads its partitions; the
+// caller holds t.mu.
+func (m *collectMetadata) refreshForLeaderCheck(t *topicMetadata, topic string) {
+	t.generation++
+	if err := m.client.RefreshMetadata(topic); err != nil && !errors.Is(err, sarama.ErrLeaderNotAvailable) {
+		klog.Errorf("Cannot refresh metadata of topic %s: %v", topic, err)
+	}
+	t.withLeader, _ = m.readWithLeader(topic)
+	t.known = m.cachedPartitions(topic, t.withLeader)
+}
+
+// cachedPartitions returns the partitions of topic in the cache, or nil if
+// they cannot be read or withLeader is nil (the topic is unknown, and callers
+// look leaders up instead).
+func (m *collectMetadata) cachedPartitions(topic string, withLeader map[int32]bool) map[int32]bool {
+	if withLeader == nil {
+		return nil
+	}
+	all, err := m.client.Partitions(topic)
+	if err != nil {
+		return nil
+	}
+	known := make(map[int32]bool, len(all))
+	for _, partition := range all {
+		known[partition] = true
+	}
+	return known
+}
+
+// readWithLeader returns the partitions of topic that have a leader in the
+// cache, nil if the topic is unknown, and whether reading refreshed metadata.
+func (m *collectMetadata) readWithLeader(topic string) (map[int32]bool, bool) {
+	writable, err := m.client.WritablePartitions(topic)
+	// WritablePartitions refreshes when the cache has no leader for the topic,
+	// and that refresh fails while any partition is still leaderless, even if
+	// others recovered: read once more, from the cache unless none recovered.
+	refreshed := errors.Is(err, sarama.ErrLeaderNotAvailable)
+	if refreshed {
+		writable, err = m.client.WritablePartitions(topic)
+	}
+	if errors.Is(err, sarama.ErrUnknownTopicOrPartition) {
+		// possibly deleted: callers look the leader up, which detects that
+		return nil, refreshed
+	}
+	if err != nil && !errors.Is(err, sarama.ErrLeaderNotAvailable) {
+		// Metadata is unreachable (no broker answered): WritablePartitions already
+		// tried to refresh. A leader lookup per partition would retry that refresh
+		// each time; skip the topic instead.
+		klog.Errorf("Cannot read the leaders of topic %s: %v", topic, err)
+		refreshed = true
+	}
+	withLeader := make(map[int32]bool, len(writable))
+	for _, p := range writable {
+		withLeader[p] = true
+	}
+	return withLeader, refreshed
 }
 
 func (m *collectMetadata) markDeleted(topic string) {

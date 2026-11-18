@@ -880,6 +880,8 @@ func (e *Exporter) emitGroupMetricsIn(meta *collectMetadata, group consumerGroup
 	for topic, partitions := range consumed {
 		var currentOffsetSum int64
 		var lagSum int64
+		// another group may have confirmed the deletion after this one's checks
+		gone := deleted[topic] || meta.isDeleted(topic)
 		for partition, offsetFetchResponseBlock := range partitions {
 			err := offsetFetchResponseBlock.Err
 			if err != sarama.ErrNoError {
@@ -893,7 +895,7 @@ func (e *Exporter) emitGroupMetricsIn(meta *collectMetadata, group consumerGroup
 			ch <- prometheus.MustNewConstMetric(
 				consumergroupCurrentOffset, prometheus.GaugeValue, float64(currentOffset), group.id, topic, strconv.FormatInt(int64(partition), 10),
 			)
-			if deleted[topic] {
+			if gone {
 				continue
 			}
 			currentPartitionOffset, ok := newest.offsets[topic][partition]
@@ -919,7 +921,7 @@ func (e *Exporter) emitGroupMetricsIn(meta *collectMetadata, group consumerGroup
 				consumergroupLag, prometheus.GaugeValue, float64(lag), group.id, topic, strconv.FormatInt(int64(partition), 10),
 			)
 		}
-		if deleted[topic] {
+		if gone {
 			continue
 		}
 		ch <- prometheus.MustNewConstMetric(

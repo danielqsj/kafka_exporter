@@ -1,16 +1,22 @@
 package main
 
 import (
+	"bytes"
 	"errors"
+	"flag"
+	"io"
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/IBM/sarama"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
+	"k8s.io/klog/v2"
 )
 
 const batchPartitions = 10
@@ -426,11 +432,10 @@ func newStaleLeaderCluster(t *testing.T, partitions int32, refreshed func(*saram
 	return client, mock, config
 }
 
-// metadataRequestsForT counts the metadata requests that name topic "t".
-func metadataRequestsForT(mock *sarama.MockBroker) int {
+func metadataRequestsFor(mock *sarama.MockBroker, topic string) int {
 	var n int
 	for _, rr := range mock.History() {
-		if req, ok := rr.Request.(*sarama.MetadataRequest); ok && slices.Contains(req.Topics, "t") {
+		if req, ok := rr.Request.(*sarama.MetadataRequest); ok && slices.Contains(req.Topics, topic) {
 			n++
 		}
 	}
@@ -464,7 +469,7 @@ func TestRetryGivesUpOnALeaderlessTopic(t *testing.T) {
 	metrics := drain(ch)
 
 	// the refresh of the failing topic, then one leader lookup's refresh, each with retries
-	got, limit := metadataRequestsForT(mock), 2*(config.Metadata.Retry.Max+1)
+	got, limit := metadataRequestsFor(mock, "t"), 2*(config.Metadata.Retry.Max+1)
 	if got == 0 {
 		t.Fatal("no metadata refresh of t: the offsets did not fail, so the retry was not reached")
 	}
@@ -561,7 +566,7 @@ func TestCollectSkipsLeaderlessPartitionsWithoutRefreshing(t *testing.T) {
 
 	// WritablePartitions refreshes when a topic has no partition with a leader, and
 	// once more to catch partitions that recovered in that refresh; not per partition
-	if got, limit := metadataRequestsForT(mock), 2*(config.Metadata.Retry.Max+1); got > limit {
+	if got, limit := metadataRequestsFor(mock, "t"), 2*(config.Metadata.Retry.Max+1); got > limit {
 		t.Errorf("leaderless topic cost %d metadata requests, want at most %d", got, limit)
 	}
 	if got := gaugesByPartition(t, metrics, topicCurrentOffset); len(got) != 1 {
@@ -588,13 +593,14 @@ func TestGroupLagSkipsLeaderlessPartitionsWithoutRefreshing(t *testing.T) {
 	if got := len(gaugesByPartition(t, metrics, consumergroupLag)); got != 0 {
 		t.Errorf("got %d lag metrics for leaderless partitions, want none", got)
 	}
-	if got, limit := metadataRequestsForT(mock), 2*(config.Metadata.Retry.Max+1); got > limit {
+	if got, limit := metadataRequestsFor(mock, "t"), 2*(config.Metadata.Retry.Max+1); got > limit {
 		t.Errorf("leaderless topic cost %d metadata requests in group lag, want at most %d", got, limit)
 	}
 }
 
 // The topic walk reads "t" fine, then every group's newest-offset request for it
-// fails. The collect refreshes "t" once, not once per group.
+// fails while metadata still names the broker. Within sarama's metadata retry
+// backoff the collect refreshes "t" once, not once per group.
 func TestCollectRefreshesAFailingTopicOncePerCollect(t *testing.T) {
 	initTopicMetricDescs()
 	initGroupMetricDescs()
@@ -602,6 +608,9 @@ func TestCollectRefreshesAFailingTopicOncePerCollect(t *testing.T) {
 	t.Cleanup(mock.Close)
 	config := sarama.NewConfig()
 	config.ApiVersionsRequest = false
+	// metadata never fails here, so sarama never waits it; the collect's bound
+	// must not depend on how fast the groups run
+	config.Metadata.Retry.Backoff = time.Hour
 	ok := &sarama.OffsetResponse{Version: sarama.NewOffsetRequest(config.Version).Version}
 	ok.AddTopicPartition("t", 0, 10)
 	failing := &sarama.OffsetResponse{Version: ok.Version}
@@ -662,7 +671,7 @@ func TestCollectRefreshesAFailingTopicOncePerCollect(t *testing.T) {
 	if len(seen) != len(groups) {
 		t.Fatalf("read %d groups, want %d", len(seen), len(groups))
 	}
-	if got := metadataRequestsForT(mock); got != 1 {
+	if got := metadataRequestsFor(mock, "t"); got != 1 {
 		t.Errorf("got %d metadata refreshes of the failing topic across %d groups, want 1", got, len(groups))
 	}
 }
@@ -793,7 +802,992 @@ func TestCollectSkipsATopicDeletedAfterTheWalkForLaterGroups(t *testing.T) {
 		t.Errorf("got %d lag sums for a deleted topic, want none", lagSums)
 	}
 	// the first group's one refresh, with its retries
-	if got, limit := metadataRequestsForT(mock), config.Metadata.Retry.Max+1; got == 0 || got > limit {
+	if got, limit := metadataRequestsFor(mock, "t"), config.Metadata.Retry.Max+1; got == 0 || got > limit {
 		t.Errorf("deleted topic cost %d metadata requests across %d groups, want 1 to %d", got, len(groups), limit)
+	}
+}
+
+// Partitions 0-4 of "t" are leaderless in the cache and 5-9 have a leader. The
+// collect refreshes "t" once before skipping 0-4: if the refresh shows their new
+// leader, their offsets and group lag are read in the same collect.
+func TestCollectRefreshesAPartlyLeaderlessTopicOnce(t *testing.T) {
+	tests := []struct {
+		name      string
+		recovered bool
+		want      int
+	}{
+		{name: "leaders elected since", recovered: true, want: 10},
+		{name: "still leaderless", recovered: false, want: 5},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			initTopicMetricDescs()
+			initGroupMetricDescs()
+			mock := sarama.NewMockBroker(t, 0)
+			t.Cleanup(mock.Close)
+			config := sarama.NewConfig()
+			config.ApiVersionsRequest = false
+			// one request per refresh, so the second metadata response is the refresh's
+			config.Metadata.Retry.Max = 0
+			version := sarama.NewMetadataRequest(config.Version, nil).Version
+			replicas := []int32{mock.BrokerID()}
+			metadata := func(leaderless int32) *sarama.MetadataResponse {
+				m := &sarama.MetadataResponse{Version: version}
+				m.AddBroker(mock.Addr(), mock.BrokerID())
+				for p := int32(0); p < 10; p++ {
+					if p < leaderless {
+						m.AddTopicPartition("t", p, -1, replicas, nil, replicas, sarama.ErrLeaderNotAvailable)
+					} else {
+						m.AddTopicPartition("t", p, mock.BrokerID(), replicas, replicas, nil, sarama.ErrNoError)
+					}
+				}
+				return m
+			}
+			refreshed := metadata(5)
+			if tt.recovered {
+				refreshed = metadata(0)
+			}
+			offsets := sarama.NewMockOffsetResponse(t)
+			groupOffsets := sarama.NewMockOffsetFetchResponse(t)
+			for p := int32(0); p < 10; p++ {
+				offsets.SetOffset("t", p, sarama.OffsetNewest, 10).SetOffset("t", p, sarama.OffsetOldest, 0)
+				groupOffsets.SetOffset("g", "t", p, 5, "", sarama.ErrNoError)
+			}
+			mock.SetHandlerByMap(map[string]sarama.MockResponse{
+				"MetadataRequest":        sarama.NewMockSequence(sarama.NewMockWrapper(metadata(5)), sarama.NewMockWrapper(refreshed)),
+				"OffsetRequest":          offsets,
+				"OffsetFetchRequest":     groupOffsets,
+				"ListGroupsRequest":      sarama.NewMockListGroupsResponse(t).AddGroup("g", "consumer"),
+				"DescribeGroupsRequest":  sarama.NewMockDescribeGroupsResponse(t).AddGroupDescription("g", &sarama.GroupDescription{GroupId: "g", State: "Stable", ProtocolType: "consumer"}),
+				"FindCoordinatorRequest": sarama.NewMockFindCoordinatorResponse(t),
+			})
+			client, err := sarama.NewClient([]string{mock.Addr()}, config)
+			if err != nil {
+				t.Fatalf("create client: %v", err)
+			}
+			t.Cleanup(func() { _ = client.Close() })
+			e := &Exporter{
+				client:              client,
+				topicFilter:         regexp.MustCompile(".*"),
+				topicExclude:        regexp.MustCompile("^$"),
+				groupFilter:         regexp.MustCompile(".*"),
+				groupExclude:        regexp.MustCompile("^$"),
+				offsetShowAll:       true,
+				nextMetadataRefresh: time.Now().Add(time.Hour),
+				topicWorkers:        1,
+				groupWorkers:        1,
+				groupMetricsTimeout: 5 * time.Second,
+			}
+			ch := make(chan prometheus.Metric, 1000)
+			e.collect(ch)
+			metrics := drain(ch)
+
+			if got := len(gaugesByPartition(t, metrics, topicCurrentOffset)); got != tt.want {
+				t.Errorf("got %d current offsets, want %d", got, tt.want)
+			}
+			if got := len(gaugesByPartition(t, metrics, consumergroupLag)); got != tt.want {
+				t.Errorf("got %d lag metrics, want %d", got, tt.want)
+			}
+			if got := metadataRequestsFor(mock, "t"); got != 1 {
+				t.Errorf("got %d metadata refreshes of t in one collect, want 1", got)
+			}
+		})
+	}
+}
+
+// Partitions 0-4 of "t" are leaderless in the cache and 5-9 are led by broker
+// 1. The leader check refreshes "t": all ten are led by broker 1. Broker 1 then
+// answers NOT_LEADER, and the refresh for the failed fetch moves them to broker
+// 2. The leader check's refresh must not use up the failed fetch's refresh.
+func TestFailedFetchRefreshesAfterTheLeaderCheckRefreshed(t *testing.T) {
+	initTopicMetricDescs()
+	brokers := []*sarama.MockBroker{sarama.NewMockBroker(t, 1), sarama.NewMockBroker(t, 2)}
+	for _, b := range brokers {
+		t.Cleanup(b.Close)
+	}
+	config := sarama.NewConfig()
+	config.ApiVersionsRequest = false
+	// one request per refresh, so each metadata response is one refresh's
+	config.Metadata.Retry.Max = 0
+	version := sarama.NewMetadataRequest(config.Version, nil).Version
+	metadata := func(leaderless int32, leader *sarama.MockBroker) *sarama.MetadataResponse {
+		m := &sarama.MetadataResponse{Version: version}
+		for _, b := range brokers {
+			m.AddBroker(b.Addr(), b.BrokerID())
+		}
+		replicas := []int32{leader.BrokerID()}
+		for p := int32(0); p < 10; p++ {
+			if p < leaderless {
+				m.AddTopicPartition("t", p, -1, replicas, nil, replicas, sarama.ErrLeaderNotAvailable)
+			} else {
+				m.AddTopicPartition("t", p, leader.BrokerID(), replicas, replicas, nil, sarama.ErrNoError)
+			}
+		}
+		return m
+	}
+	sequence := sarama.NewMockSequence(
+		sarama.NewMockWrapper(metadata(5, brokers[0])),
+		sarama.NewMockWrapper(metadata(0, brokers[0])),
+		sarama.NewMockWrapper(metadata(0, brokers[1])),
+	)
+	stale := &sarama.OffsetResponse{Version: sarama.NewOffsetRequest(config.Version).Version}
+	stale.Blocks = map[string]map[int32]*sarama.OffsetResponseBlock{"t": {}}
+	offsets := sarama.NewMockOffsetResponse(t)
+	for p := int32(0); p < 10; p++ {
+		stale.Blocks["t"][p] = &sarama.OffsetResponseBlock{Err: sarama.ErrNotLeaderForPartition}
+		offsets.SetOffset("t", p, sarama.OffsetNewest, 10).SetOffset("t", p, sarama.OffsetOldest, 0)
+	}
+	brokers[0].SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest":   sequence,
+		"OffsetRequest":     sarama.NewMockWrapper(stale),
+		"ListGroupsRequest": sarama.NewMockListGroupsResponse(t),
+	})
+	brokers[1].SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest":   sequence,
+		"OffsetRequest":     offsets,
+		"ListGroupsRequest": sarama.NewMockListGroupsResponse(t),
+	})
+	client, err := sarama.NewClient([]string{brokers[0].Addr()}, config)
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	e := &Exporter{
+		client:              client,
+		topicFilter:         regexp.MustCompile(".*"),
+		topicExclude:        regexp.MustCompile("^$"),
+		groupFilter:         regexp.MustCompile(".*"),
+		groupExclude:        regexp.MustCompile("^$"),
+		nextMetadataRefresh: time.Now().Add(time.Hour),
+		topicWorkers:        1,
+		groupWorkers:        1,
+		groupMetricsTimeout: time.Second,
+	}
+	ch := make(chan prometheus.Metric, 1000)
+	e.collect(ch)
+
+	if got := len(gaugesByPartition(t, drain(ch), topicCurrentOffset)); got != 10 {
+		t.Errorf("got %d current offsets, want 10 from broker 2", got)
+	}
+}
+
+// Every partition of "t" is leaderless in the cache and then no broker answers:
+// the leader check's refresh fails with something other than an unknown topic.
+// The collect must not fall back to a leader lookup, and so a refresh attempt,
+// per partition.
+func TestCollectSkipsALeaderlessTopicWhenMetadataIsUnreachable(t *testing.T) {
+	initTopicMetricDescs()
+	mock := sarama.NewMockBroker(t, 0)
+	config := sarama.NewConfig()
+	config.ApiVersionsRequest = false
+	config.Net.DialTimeout = 200 * time.Millisecond
+	config.Metadata.Retry.Max = 1
+	var attempts atomic.Int32
+	config.Metadata.Retry.BackoffFunc = func(int, int) time.Duration {
+		attempts.Add(1)
+		return 0
+	}
+	metadata := &sarama.MetadataResponse{Version: sarama.NewMetadataRequest(config.Version, nil).Version}
+	metadata.AddBroker(mock.Addr(), mock.BrokerID())
+	replicas := []int32{mock.BrokerID()}
+	for p := int32(0); p < 20; p++ {
+		metadata.AddTopicPartition("t", p, -1, replicas, nil, replicas, sarama.ErrLeaderNotAvailable)
+	}
+	mock.SetHandlerByMap(map[string]sarama.MockResponse{"MetadataRequest": sarama.NewMockWrapper(metadata)})
+	client, err := sarama.NewClient([]string{mock.Addr()}, config)
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	mock.Close()
+	attempts.Store(0)
+
+	e := &Exporter{
+		client:              client,
+		topicFilter:         regexp.MustCompile(".*"),
+		topicExclude:        regexp.MustCompile("^$"),
+		groupFilter:         regexp.MustCompile(".*"),
+		groupExclude:        regexp.MustCompile("^$"),
+		nextMetadataRefresh: time.Now().Add(time.Hour),
+		topicWorkers:        1,
+		groupWorkers:        1,
+		groupMetricsTimeout: time.Second,
+	}
+	ch := make(chan prometheus.Metric, 1000)
+	e.collect(ch)
+	drain(ch)
+
+	// the leader check's one refresh, which retries once
+	if got := attempts.Load(); got != 1 {
+		t.Errorf("unreachable metadata cost %d refresh retries, want 1, not one per partition", got)
+	}
+}
+
+// leaderHookClient calls onLeader after each successful leader lookup. The
+// group path looks a partition's leader up after its deletion checks and
+// before it sends the offset request.
+type leaderHookClient struct {
+	sarama.Client
+	onLeader func()
+}
+
+func (c *leaderHookClient) Leader(topic string, partition int32) (*sarama.Broker, error) {
+	leader, err := c.Client.Leader(topic, partition)
+	if err == nil {
+		c.onLeader()
+	}
+	return leader, err
+}
+
+// Another group confirms "t" deleted after this group's own deletion checks,
+// before this group's offsets are emitted. This group must then skip t's lag
+// and lag sum too, not report them.
+func TestGroupLagSkipsATopicAnotherGroupFoundDeleted(t *testing.T) {
+	initGroupMetricDescs()
+	coordinator, leader := sarama.NewMockBroker(t, 1), sarama.NewMockBroker(t, 2)
+	t.Cleanup(coordinator.Close)
+	t.Cleanup(leader.Close)
+	metadata := sarama.NewMockMetadataResponse(t).
+		SetBroker(coordinator.Addr(), coordinator.BrokerID()).
+		SetBroker(leader.Addr(), leader.BrokerID()).
+		SetLeader("t", 0, leader.BrokerID())
+	coordinator.SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest":    metadata,
+		"OffsetFetchRequest": sarama.NewMockOffsetFetchResponse(t).SetOffset("g", "t", 0, 5, "", sarama.ErrNoError),
+	})
+	leader.SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest": metadata,
+		"OffsetRequest":   sarama.NewMockOffsetResponse(t).SetOffset("t", 0, sarama.OffsetNewest, 10),
+	})
+	config := sarama.NewConfig()
+	config.ApiVersionsRequest = false
+	client, err := sarama.NewClient([]string{coordinator.Addr()}, config)
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+
+	meta := newCollectMetadata(client)
+	e := &Exporter{
+		client:        &leaderHookClient{Client: client, onLeader: func() { meta.markDeleted("t") }},
+		offsetShowAll: true,
+	}
+	ch := make(chan prometheus.Metric, 100)
+	e.emitGroupMetricsIn(meta, consumerGroupInfo{id: "g"}, sarama.NewBroker(coordinator.Addr()), map[string]map[int32]int64{"t": {0: 10}}, ch)
+
+	var offsets, lag, lagSums int
+	for _, m := range drain(ch) {
+		switch m.Desc() {
+		case consumergroupCurrentOffset:
+			offsets++
+		case consumergroupLag:
+			lag++
+		case consumergroupLagSum:
+			lagSums++
+		}
+	}
+	if offsets != 1 {
+		t.Fatalf("got %d consumer group offsets, want 1: the group was not read", offsets)
+	}
+	// the deletion must land after the group's own checks, or the emit-time check is untested
+	var requests int
+	for _, rr := range leader.History() {
+		if _, ok := rr.Request.(*sarama.OffsetRequest); ok {
+			requests++
+		}
+	}
+	if requests != 1 {
+		t.Fatalf("leader got %d offset requests, want 1: the group skipped t before the deletion was marked", requests)
+	}
+	if lag != 0 || lagSums != 0 {
+		t.Errorf("got %d lag and %d lag sum metrics for a topic another group found deleted, want none", lag, lagSums)
+	}
+}
+
+// Partition t/0 moves twice in one collect: the walk's fetch from broker 1 gets
+// NOT_LEADER and its refresh finds broker 2; broker 2 then answers the group's
+// fetch with NOT_LEADER and the next refresh finds broker 3. The walk's refresh
+// must not stop the group's own refresh, or the group's lag goes missing.
+func TestGroupRefreshesAfterTheWalkRefreshed(t *testing.T) {
+	initTopicMetricDescs()
+	initGroupMetricDescs()
+	brokers := []*sarama.MockBroker{sarama.NewMockBroker(t, 1), sarama.NewMockBroker(t, 2), sarama.NewMockBroker(t, 3)}
+	for _, b := range brokers {
+		t.Cleanup(b.Close)
+	}
+	config := sarama.NewConfig()
+	config.ApiVersionsRequest = false
+	// one request per refresh, so each metadata response is one refresh's
+	config.Metadata.Retry.Max = 0
+	metadata := func(leader *sarama.MockBroker) *sarama.MockMetadataResponse {
+		m := sarama.NewMockMetadataResponse(t)
+		for _, b := range brokers {
+			m.SetBroker(b.Addr(), b.BrokerID())
+		}
+		return m.SetLeader("t", 0, leader.BrokerID())
+	}
+	sequence := sarama.NewMockSequence(metadata(brokers[0]), metadata(brokers[1]), metadata(brokers[2]))
+	ok := &sarama.OffsetResponse{Version: sarama.NewOffsetRequest(config.Version).Version}
+	ok.AddTopicPartition("t", 0, 10)
+	stale := &sarama.OffsetResponse{Version: ok.Version}
+	stale.Blocks = map[string]map[int32]*sarama.OffsetResponseBlock{"t": {0: {Err: sarama.ErrNotLeaderForPartition}}}
+	brokers[0].SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest":        sequence,
+		"OffsetRequest":          sarama.NewMockWrapper(stale),
+		"OffsetFetchRequest":     sarama.NewMockOffsetFetchResponse(t).SetOffset("g", "t", 0, 40, "", sarama.ErrNoError),
+		"ListGroupsRequest":      sarama.NewMockListGroupsResponse(t).AddGroup("g", "consumer"),
+		"DescribeGroupsRequest":  sarama.NewMockDescribeGroupsResponse(t).AddGroupDescription("g", &sarama.GroupDescription{GroupId: "g", State: "Stable", ProtocolType: "consumer"}),
+		"FindCoordinatorRequest": sarama.NewMockFindCoordinatorResponse(t),
+	})
+	brokers[1].SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest": sequence,
+		// the walk's newest and oldest retries succeed, the group's fetch does not
+		"OffsetRequest":     sarama.NewMockSequence(sarama.NewMockWrapper(ok), sarama.NewMockWrapper(ok), sarama.NewMockWrapper(stale)),
+		"ListGroupsRequest": sarama.NewMockListGroupsResponse(t),
+	})
+	brokers[2].SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest":   sequence,
+		"OffsetRequest":     sarama.NewMockOffsetResponse(t).SetOffset("t", 0, sarama.OffsetNewest, 42),
+		"ListGroupsRequest": sarama.NewMockListGroupsResponse(t),
+	})
+	client, err := sarama.NewClient([]string{brokers[0].Addr()}, config)
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	e := &Exporter{
+		client:              client,
+		topicFilter:         regexp.MustCompile(".*"),
+		topicExclude:        regexp.MustCompile("^$"),
+		groupFilter:         regexp.MustCompile(".*"),
+		groupExclude:        regexp.MustCompile("^$"),
+		offsetShowAll:       true,
+		nextMetadataRefresh: time.Now().Add(time.Hour),
+		topicWorkers:        1,
+		groupWorkers:        1,
+		groupMetricsTimeout: 5 * time.Second,
+	}
+	ch := make(chan prometheus.Metric, 1000)
+	e.collect(ch)
+	metrics := drain(ch)
+
+	if got := gaugesByPartition(t, metrics, topicCurrentOffset); got["0"] != 10 {
+		t.Fatalf("current offsets %v, want partition 0 at 10 from broker 2: the walk's retry failed", got)
+	}
+	if got := gaugesByPartition(t, metrics, consumergroupLag); got["0"] != 2 {
+		t.Errorf("lag %v, want partition 0 at 2 (42 from broker 3 - 40)", got)
+	}
+}
+
+// t/0 moves twice between consumer groups: the first group's fetch from broker 1
+// gets NOT_LEADER and its refresh finds broker 2; broker 2 then answers the
+// second group's fetch with NOT_LEADER, and that group's refresh finds broker 3.
+// The first group's refresh must not stop the second group's.
+func TestLaterGroupRefreshesAfterAnEarlierGroupRefreshed(t *testing.T) {
+	initTopicMetricDescs()
+	initGroupMetricDescs()
+	brokers := []*sarama.MockBroker{sarama.NewMockBroker(t, 1), sarama.NewMockBroker(t, 2), sarama.NewMockBroker(t, 3)}
+	for _, b := range brokers {
+		t.Cleanup(b.Close)
+	}
+	config := sarama.NewConfig()
+	config.ApiVersionsRequest = false
+	// one request per refresh, so each metadata response is one refresh's
+	config.Metadata.Retry.Max = 0
+	metadata := func(leader *sarama.MockBroker) *sarama.MockMetadataResponse {
+		m := sarama.NewMockMetadataResponse(t)
+		for _, b := range brokers {
+			m.SetBroker(b.Addr(), b.BrokerID())
+		}
+		return m.SetLeader("t", 0, leader.BrokerID())
+	}
+	sequence := sarama.NewMockSequence(metadata(brokers[0]), metadata(brokers[1]), metadata(brokers[2]))
+	ok := &sarama.OffsetResponse{Version: sarama.NewOffsetRequest(config.Version).Version}
+	ok.AddTopicPartition("t", 0, 10)
+	stale := &sarama.OffsetResponse{Version: ok.Version}
+	stale.Blocks = map[string]map[int32]*sarama.OffsetResponseBlock{"t": {0: {Err: sarama.ErrNotLeaderForPartition}}}
+	groups := []string{"g1", "g2"}
+	list := sarama.NewMockListGroupsResponse(t)
+	describe := sarama.NewMockDescribeGroupsResponse(t)
+	groupOffsets := sarama.NewMockOffsetFetchResponse(t)
+	for _, g := range groups {
+		list.AddGroup(g, "consumer")
+		describe.AddGroupDescription(g, &sarama.GroupDescription{GroupId: g, State: "Stable", ProtocolType: "consumer"})
+		groupOffsets.SetOffset(g, "t", 0, 5, "", sarama.ErrNoError)
+	}
+	brokers[0].SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest": sequence,
+		// the walk's newest and oldest succeed, the first group's fetch does not
+		"OffsetRequest":          sarama.NewMockSequence(sarama.NewMockWrapper(ok), sarama.NewMockWrapper(ok), sarama.NewMockWrapper(stale)),
+		"OffsetFetchRequest":     groupOffsets,
+		"ListGroupsRequest":      list,
+		"DescribeGroupsRequest":  describe,
+		"FindCoordinatorRequest": sarama.NewMockFindCoordinatorResponse(t),
+	})
+	brokers[1].SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest": sequence,
+		// the first group's retry succeeds, the second group's fetch does not
+		"OffsetRequest":     sarama.NewMockSequence(sarama.NewMockWrapper(ok), sarama.NewMockWrapper(stale)),
+		"ListGroupsRequest": sarama.NewMockListGroupsResponse(t),
+	})
+	brokers[2].SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest":   sequence,
+		"OffsetRequest":     sarama.NewMockOffsetResponse(t).SetOffset("t", 0, sarama.OffsetNewest, 42),
+		"ListGroupsRequest": sarama.NewMockListGroupsResponse(t),
+	})
+	client, err := sarama.NewClient([]string{brokers[0].Addr()}, config)
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	e := &Exporter{
+		client:              client,
+		topicFilter:         regexp.MustCompile(".*"),
+		topicExclude:        regexp.MustCompile("^$"),
+		groupFilter:         regexp.MustCompile(".*"),
+		groupExclude:        regexp.MustCompile("^$"),
+		offsetShowAll:       true,
+		nextMetadataRefresh: time.Now().Add(time.Hour),
+		topicWorkers:        1,
+		// one at a time, so the second group fetches after the first refreshed
+		groupWorkers:        1,
+		groupMetricsTimeout: 5 * time.Second,
+	}
+	ch := make(chan prometheus.Metric, 1000)
+	e.collect(ch)
+
+	lag := make(map[string]float64)
+	for _, m := range drain(ch) {
+		if m.Desc() != consumergroupLag {
+			continue
+		}
+		var out dto.Metric
+		if err := m.Write(&out); err != nil {
+			t.Fatalf("write metric: %v", err)
+		}
+		for _, l := range out.GetLabel() {
+			if l.GetName() == "consumergroup" {
+				lag[l.GetValue()] = out.GetGauge().GetValue()
+			}
+		}
+	}
+	// whichever group runs first reads 10 from broker 2, the other 42 from broker 3
+	values := []float64{}
+	for _, g := range groups {
+		values = append(values, lag[g])
+	}
+	slices.Sort(values)
+	if len(lag) != 2 || values[0] != 5 || values[1] != 37 {
+		t.Errorf("lag by group %v, want one group at 5 (10 from broker 2) and one at 37 (42 from broker 3)", lag)
+	}
+}
+
+// A failed fetch must not refresh a topic that was refreshed after the fetch
+// began, whether by another failed fetch or by the leader check; it must
+// refresh one that was not.
+func TestRefreshSkipsATopicRefreshedSinceTheFetchBegan(t *testing.T) {
+	tests := []struct {
+		name       string
+		leaderless int32
+		// refreshes t between the fetch's start and its refresh
+		between func(meta *collectMetadata, fetchStarted map[string]int)
+	}{
+		{name: "by another failed fetch", between: func(meta *collectMetadata, fetchStarted map[string]int) {
+			meta.refresh([]string{"t"}, fetchStarted)
+		}},
+		{name: "by the leader check of a leaderless topic", leaderless: 10, between: func(meta *collectMetadata, _ map[string]int) {
+			meta.hasLeader("t", 0)
+		}},
+		{name: "by the leader check of a partly leaderless topic", leaderless: 5, between: func(meta *collectMetadata, _ map[string]int) {
+			meta.hasLeader("t", 5)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := sarama.NewMockBroker(t, 0)
+			t.Cleanup(mock.Close)
+			config := sarama.NewConfig()
+			config.ApiVersionsRequest = false
+			// one request per refresh
+			config.Metadata.Retry.Max = 0
+			metadata := &sarama.MetadataResponse{Version: sarama.NewMetadataRequest(config.Version, nil).Version}
+			metadata.AddBroker(mock.Addr(), mock.BrokerID())
+			replicas := []int32{mock.BrokerID()}
+			for p := int32(0); p < 10; p++ {
+				if p < tt.leaderless {
+					metadata.AddTopicPartition("t", p, -1, replicas, nil, replicas, sarama.ErrLeaderNotAvailable)
+				} else {
+					metadata.AddTopicPartition("t", p, mock.BrokerID(), replicas, replicas, nil, sarama.ErrNoError)
+				}
+			}
+			mock.SetHandlerByMap(map[string]sarama.MockResponse{"MetadataRequest": sarama.NewMockWrapper(metadata)})
+			client, err := sarama.NewClient([]string{mock.Addr()}, config)
+			if err != nil {
+				t.Fatalf("create client: %v", err)
+			}
+			t.Cleanup(func() { _ = client.Close() })
+			meta := newCollectMetadata(client)
+			batch := newOffsetBatch(config.Version, sarama.OffsetNewest)
+			batch.add(client.Brokers()[0], "t", 9)
+
+			fetchStarted := meta.generations([]*offsetBatch{batch})
+			tt.between(meta, fetchStarted)
+			before := metadataRequestsFor(mock, "t")
+			if before == 0 {
+				t.Fatalf("t was not refreshed between the fetch's start and its refresh")
+			}
+			meta.refresh([]string{"t"}, fetchStarted)
+			if got := metadataRequestsFor(mock, "t") - before; got != 0 {
+				t.Errorf("the fetch's refresh sent %d metadata requests for t, want 0: t was refreshed after the fetch began", got)
+			}
+			meta.refresh([]string{"t"}, meta.generations([]*offsetBatch{batch}))
+			if got := metadataRequestsFor(mock, "t") - before; got != 1 {
+				t.Errorf("a fetch that began after the last refresh sent %d metadata requests for t, want 1", got)
+			}
+		})
+	}
+}
+
+// t/0 moves from b1 to b2, and the first refresh still names b1. Fetches within
+// sarama's metadata retry backoff of that refresh must not refresh again, even
+// though each fails; the first fetch after it must, and finds b2.
+func TestDisagreeingTopicIsRefreshedAgainAfterTheBackoff(t *testing.T) {
+	b1, b2 := sarama.NewMockBroker(t, 1), sarama.NewMockBroker(t, 2)
+	t.Cleanup(b1.Close)
+	t.Cleanup(b2.Close)
+	config := sarama.NewConfig()
+	config.ApiVersionsRequest = false
+	// one request per refresh, so each metadata response is one refresh's
+	config.Metadata.Retry.Max = 0
+	// far from sarama's 250ms default, so a backoff not read from the config fails
+	config.Metadata.Retry.Backoff = 10 * time.Second
+	metadata := func(leader *sarama.MockBroker) *sarama.MockMetadataResponse {
+		return sarama.NewMockMetadataResponse(t).
+			SetBroker(b1.Addr(), b1.BrokerID()).
+			SetBroker(b2.Addr(), b2.BrokerID()).
+			SetLeader("t", 0, leader.BrokerID())
+	}
+	// client start, the first refresh (still b1), the refresh after the backoff
+	sequence := sarama.NewMockSequence(metadata(b1), metadata(b1), metadata(b2))
+	stale := &sarama.OffsetResponse{Version: sarama.NewOffsetRequest(config.Version).Version}
+	stale.Blocks = map[string]map[int32]*sarama.OffsetResponseBlock{"t": {0: {Err: sarama.ErrNotLeaderForPartition}}}
+	b1.SetHandlerByMap(map[string]sarama.MockResponse{"MetadataRequest": sequence, "OffsetRequest": sarama.NewMockWrapper(stale)})
+	b2.SetHandlerByMap(map[string]sarama.MockResponse{"MetadataRequest": sequence, "OffsetRequest": sarama.NewMockOffsetResponse(t).SetOffset("t", 0, sarama.OffsetNewest, 42)})
+	client, err := sarama.NewClient([]string{b1.Addr()}, config)
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	e := &Exporter{client: client}
+	meta := newCollectMetadata(client)
+	// far from the real time, so a real clock anywhere in the check shows up
+	clock := time.Unix(1_000_000, 0)
+	meta.now = func() time.Time { return clock }
+	refreshes := func() int { return metadataRequestsFor(b1, "t") + metadataRequestsFor(b2, "t") }
+	fetch := func() (int64, bool) {
+		leader, err := client.Leader("t", 0)
+		if err != nil {
+			t.Fatalf("leader of t/0: %v", err)
+		}
+		batch := newOffsetBatch(config.Version, sarama.OffsetNewest)
+		batch.add(leader, "t", 0)
+		offset, ok := e.fetchOffsets(meta, batch)[0].offsets["t"][0]
+		return offset, ok
+	}
+
+	// the walk: refreshed once, and the refresh still names b1
+	if _, ok := fetch(); ok {
+		t.Fatalf("first fetch got an offset from b1")
+	}
+	if got := refreshes(); got != 1 {
+		t.Fatalf("got %d refreshes after the first fetch, want 1", got)
+	}
+	// a group within the backoff: no refresh, and its failure doesn't restart the backoff
+	clock = clock.Add(config.Metadata.Retry.Backoff * 3 / 5)
+	if _, ok := fetch(); ok {
+		t.Fatalf("second fetch got an offset without a refresh")
+	}
+	if got := refreshes(); got != 1 {
+		t.Fatalf("got %d refreshes within the backoff, want 1", got)
+	}
+	// a group after the backoff: refreshes and reads b2
+	clock = clock.Add(config.Metadata.Retry.Backoff * 3 / 5)
+	if got, ok := fetch(); !ok || got != 42 {
+		t.Errorf("fetch after the backoff got %d (found %v), want 42 from b2", got, ok)
+	}
+	if got := refreshes(); got != 2 {
+		t.Errorf("got %d refreshes in all, want 2", got)
+	}
+}
+
+// Two fetches began before the same refresh, and both retries found the broker
+// that failed. The later one, finishing after a slow request, must not restart
+// the backoff that the first one started.
+func TestFetchesBeforeOneRefreshStartOneBackoff(t *testing.T) {
+	mock := sarama.NewMockBroker(t, 0)
+	t.Cleanup(mock.Close)
+	config := sarama.NewConfig()
+	config.ApiVersionsRequest = false
+	config.Metadata.Retry.Max = 0
+	config.Metadata.Retry.Backoff = 10 * time.Second
+	mock.SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest": sarama.NewMockMetadataResponse(t).SetBroker(mock.Addr(), mock.BrokerID()).SetLeader("t", 0, mock.BrokerID()),
+	})
+	client, err := sarama.NewClient([]string{mock.Addr()}, config)
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	meta := newCollectMetadata(client)
+	// far from the real time, so a real clock anywhere in the check shows up
+	clock := time.Unix(1_000_000, 0)
+	meta.now = func() time.Time { return clock }
+	batch := newOffsetBatch(config.Version, sarama.OffsetNewest)
+	batch.add(client.Brokers()[0], "t", 0)
+
+	began := meta.generations([]*offsetBatch{batch})
+	meta.refresh([]string{"t"}, began)
+	lookedUp := meta.generationsOf([]string{"t"})
+	meta.markDisagrees("t", began["t"], lookedUp["t"])
+	clock = clock.Add(config.Metadata.Retry.Backoff * 3 / 5)
+	meta.markDisagrees("t", began["t"], lookedUp["t"])
+	clock = clock.Add(config.Metadata.Retry.Backoff * 3 / 5)
+
+	before := metadataRequestsFor(mock, "t")
+	meta.refresh([]string{"t"}, meta.generations([]*offsetBatch{batch}))
+	if got := metadataRequestsFor(mock, "t") - before; got != 1 {
+		t.Errorf("got %d refreshes once the backoff from the refresh had passed, want 1", got)
+	}
+}
+
+// A fetch's retry looked its leaders up after its refresh, then another fetch
+// refreshed "t" again before the first one recorded that metadata disagrees.
+// The newer metadata may name another leader, so the first fetch must not start
+// a backoff that blocks the next failing fetch's refresh.
+func TestRetryLookedUpBeforeAnotherRefreshStartsNoBackoff(t *testing.T) {
+	mock := sarama.NewMockBroker(t, 0)
+	t.Cleanup(mock.Close)
+	config := sarama.NewConfig()
+	config.ApiVersionsRequest = false
+	config.Metadata.Retry.Max = 0
+	config.Metadata.Retry.Backoff = 10 * time.Second
+	mock.SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest": sarama.NewMockMetadataResponse(t).SetBroker(mock.Addr(), mock.BrokerID()).SetLeader("t", 0, mock.BrokerID()),
+	})
+	client, err := sarama.NewClient([]string{mock.Addr()}, config)
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	meta := newCollectMetadata(client)
+	clock := time.Unix(1_000_000, 0)
+	meta.now = func() time.Time { return clock }
+	topics := []string{"t"}
+
+	began := meta.generationsOf(topics)
+	meta.refresh(topics, began)
+	lookedUp := meta.generationsOf(topics)
+	// another fetch refreshes between the lookups and the mark
+	meta.refresh(topics, meta.generationsOf(topics))
+	meta.markDisagrees("t", began["t"], lookedUp["t"])
+
+	before := metadataRequestsFor(mock, "t")
+	meta.refresh(topics, meta.generationsOf(topics))
+	if got := metadataRequestsFor(mock, "t") - before; got != 1 {
+		t.Errorf("got %d refreshes for a fetch failing on the newer metadata, want 1: a backoff was started from older metadata", got)
+	}
+}
+
+// One fetch's refresh of "t" and "kept" finds t deleted. Another group's leader
+// check that runs after the refresh, before the first fetch's retry marks t
+// deleted, must not pay for its own refresh (sarama retries an unknown topic's
+// metadata); "kept", refreshed in the same request, is not deleted.
+func TestRefreshThatFindsATopicDeletedMarksIt(t *testing.T) {
+	mock := sarama.NewMockBroker(t, 0)
+	t.Cleanup(mock.Close)
+	config := sarama.NewConfig()
+	config.ApiVersionsRequest = false
+	config.Metadata.Retry.Max = 3
+	config.Metadata.Retry.Backoff = time.Millisecond
+	withTopic := sarama.NewMockMetadataResponse(t).SetBroker(mock.Addr(), mock.BrokerID()).
+		SetLeader("t", 0, mock.BrokerID()).
+		SetLeader("kept", 0, mock.BrokerID())
+	withoutTopic := sarama.NewMockMetadataResponse(t).SetBroker(mock.Addr(), mock.BrokerID()).
+		SetLeader("kept", 0, mock.BrokerID())
+	mock.SetHandlerByMap(map[string]sarama.MockResponse{"MetadataRequest": sarama.NewMockSequence(withTopic, withoutTopic)})
+	client, err := sarama.NewClient([]string{mock.Addr()}, config)
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	meta := newCollectMetadata(client)
+	if !meta.hasLeader("t", 0) {
+		t.Fatalf("t/0 has no leader before the deletion")
+	}
+
+	topics := []string{"t", "kept"}
+	meta.refresh(topics, meta.generationsOf(topics))
+	if !meta.isDeleted("t") {
+		t.Errorf("the refresh found t gone but did not mark it deleted")
+	}
+	if meta.isDeleted("kept") || !meta.hasLeader("kept", 0) {
+		t.Errorf("kept, still in metadata, was marked deleted or lost its leader")
+	}
+	before := metadataRequestsFor(mock, "t")
+	if meta.hasLeader("t", 0) {
+		t.Errorf("leader check reported a leader for a deleted topic")
+	}
+	if got := metadataRequestsFor(mock, "t") - before; got != 0 {
+		t.Errorf("leader check after the refresh sent %d metadata requests for a deleted topic, want 0", got)
+	}
+}
+
+// "t" is deleted after the walk lists it and before the walk's offset fetch.
+// No group runs, so only the fetch's refresh learns of the deletion; it must
+// log it once, or the runbook's "no longer exists" check finds nothing.
+func TestTopicDeletedBeforeTheWalkFetchIsLoggedOnce(t *testing.T) {
+	var buf bytes.Buffer
+	fs := flag.NewFlagSet("klog", flag.ContinueOnError)
+	klog.InitFlags(fs)
+	for name, value := range map[string]string{"logtostderr": "false", "alsologtostderr": "false", "stderrthreshold": "FATAL", "v": "0"} {
+		if err := fs.Set(name, value); err != nil {
+			t.Fatalf("set klog flag %s: %v", name, err)
+		}
+	}
+	// every line once: the INFO stream gets every severity
+	klog.SetOutput(io.Discard)
+	klog.SetOutputBySeverity("INFO", &buf)
+	t.Cleanup(func() {
+		klog.Flush()
+		_ = fs.Set("logtostderr", "true")
+		_ = fs.Set("stderrthreshold", "ERROR")
+		klog.SetOutput(nil)
+	})
+
+	initTopicMetricDescs()
+	mock := sarama.NewMockBroker(t, 0)
+	t.Cleanup(mock.Close)
+	config := sarama.NewConfig()
+	config.ApiVersionsRequest = false
+	config.Metadata.Retry.Max = 0
+	withTopic := sarama.NewMockMetadataResponse(t).SetBroker(mock.Addr(), mock.BrokerID()).
+		SetLeader("t", 0, mock.BrokerID()).
+		SetLeader("t", 1, mock.BrokerID())
+	withoutTopic := sarama.NewMockMetadataResponse(t).SetBroker(mock.Addr(), mock.BrokerID())
+	gone := &sarama.OffsetResponse{Version: sarama.NewOffsetRequest(config.Version).Version}
+	gone.Blocks = map[string]map[int32]*sarama.OffsetResponseBlock{"t": {
+		0: {Err: sarama.ErrUnknownTopicOrPartition},
+		1: {Err: sarama.ErrUnknownTopicOrPartition},
+	}}
+	mock.SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest":   sarama.NewMockSequence(withTopic, withoutTopic),
+		"OffsetRequest":     sarama.NewMockWrapper(gone),
+		"ListGroupsRequest": sarama.NewMockListGroupsResponse(t),
+	})
+	client, err := sarama.NewClient([]string{mock.Addr()}, config)
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	e := &Exporter{
+		client:              client,
+		topicFilter:         regexp.MustCompile(".*"),
+		topicExclude:        regexp.MustCompile("^$"),
+		groupFilter:         regexp.MustCompile(".*"),
+		groupExclude:        regexp.MustCompile("^$"),
+		nextMetadataRefresh: time.Now().Add(time.Hour),
+		topicWorkers:        1,
+		groupWorkers:        1,
+		groupMetricsTimeout: time.Second,
+	}
+	ch := make(chan prometheus.Metric, 1000)
+	e.collect(ch)
+	drain(ch)
+	klog.Flush()
+
+	if got := strings.Count(buf.String(), "Topic t no longer exists"); got != 1 {
+		t.Errorf("got %d \"Topic t no longer exists\" lines, want 1; log:\n%s", got, buf.String())
+	}
+}
+
+// "t" grew a partition after the exporter cached its metadata, and the group's
+// assignment (offset.show-all=false) already includes it. Partition 1 is not
+// leaderless, just unknown to the cache: its lag must still be reported, as
+// client.GetOffset's refresh on a cache miss did.
+func TestGroupLagReadsAPartitionTheCacheDoesNotKnowYet(t *testing.T) {
+	initGroupMetricDescs()
+	mock := sarama.NewMockBroker(t, 0)
+	t.Cleanup(mock.Close)
+	config := sarama.NewConfig()
+	config.ApiVersionsRequest = false
+	config.Metadata.Retry.Max = 0
+	onePartition := sarama.NewMockMetadataResponse(t).SetBroker(mock.Addr(), mock.BrokerID()).
+		SetLeader("t", 0, mock.BrokerID())
+	twoPartitions := sarama.NewMockMetadataResponse(t).SetBroker(mock.Addr(), mock.BrokerID()).
+		SetLeader("t", 0, mock.BrokerID()).
+		SetLeader("t", 1, mock.BrokerID())
+	mock.SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest": sarama.NewMockSequence(onePartition, twoPartitions),
+		"OffsetFetchRequest": sarama.NewMockOffsetFetchResponse(t).
+			SetOffset("g", "t", 0, 5, "", sarama.ErrNoError).
+			SetOffset("g", "t", 1, 5, "", sarama.ErrNoError),
+		"OffsetRequest": sarama.NewMockOffsetResponse(t).
+			SetOffset("t", 0, sarama.OffsetNewest, 10).
+			SetOffset("t", 1, sarama.OffsetNewest, 10),
+	})
+	client, err := sarama.NewClient([]string{mock.Addr()}, config)
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	if partitions, _ := client.Partitions("t"); len(partitions) != 1 {
+		t.Fatalf("cache has partitions %v, want only 0", partitions)
+	}
+
+	e := &Exporter{client: client, offsetShowAll: false}
+	group := consumerGroupInfo{id: "g", memberCount: 1, currentAssignments: map[string]map[int32]struct{}{"t": {0: {}, 1: {}}}}
+	ch := make(chan prometheus.Metric, 100)
+	e.emitGroupMetricsIn(newCollectMetadata(client), group, sarama.NewBroker(mock.Addr()), nil, ch)
+
+	metrics := drain(ch)
+	if got := gaugesByPartition(t, metrics, consumergroupLag); len(got) != 2 || got["1"] != 5 {
+		t.Errorf("lag by partition %v, want 5 for both 0 and 1", got)
+	}
+	for _, m := range metrics {
+		if m.Desc() != consumergroupLagSum {
+			continue
+		}
+		var out dto.Metric
+		if err := m.Write(&out); err != nil {
+			t.Fatalf("write metric: %v", err)
+		}
+		if got := out.GetGauge().GetValue(); got != 10 {
+			t.Errorf("lag sum %v, want 10", got)
+		}
+	}
+}
+
+// The group is assigned partitions 2 and 3 of "t", which Kafka's metadata never
+// lists. The leader check refreshes "t" once for them, not once per partition,
+// and skips them.
+func TestGroupLagRefreshesOnceForPartitionsMetadataNeverLists(t *testing.T) {
+	initGroupMetricDescs()
+	mock := sarama.NewMockBroker(t, 0)
+	t.Cleanup(mock.Close)
+	config := sarama.NewConfig()
+	config.ApiVersionsRequest = false
+	config.Metadata.Retry.Max = 0
+	mock.SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest": sarama.NewMockMetadataResponse(t).SetBroker(mock.Addr(), mock.BrokerID()).
+			SetLeader("t", 0, mock.BrokerID()).
+			SetLeader("t", 1, mock.BrokerID()),
+		"OffsetFetchRequest": sarama.NewMockOffsetFetchResponse(t).
+			SetOffset("g", "t", 0, 5, "", sarama.ErrNoError).
+			SetOffset("g", "t", 1, 5, "", sarama.ErrNoError).
+			SetOffset("g", "t", 2, 5, "", sarama.ErrNoError).
+			SetOffset("g", "t", 3, 5, "", sarama.ErrNoError),
+		"OffsetRequest": sarama.NewMockOffsetResponse(t).
+			SetOffset("t", 0, sarama.OffsetNewest, 10).
+			SetOffset("t", 1, sarama.OffsetNewest, 10),
+	})
+	client, err := sarama.NewClient([]string{mock.Addr()}, config)
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	before := metadataRequestsFor(mock, "t")
+
+	e := &Exporter{client: client, offsetShowAll: false}
+	assigned := map[int32]struct{}{0: {}, 1: {}, 2: {}, 3: {}}
+	group := consumerGroupInfo{id: "g", memberCount: 1, currentAssignments: map[string]map[int32]struct{}{"t": assigned}}
+	ch := make(chan prometheus.Metric, 100)
+	e.emitGroupMetricsIn(newCollectMetadata(client), group, sarama.NewBroker(mock.Addr()), nil, ch)
+
+	if got := gaugesByPartition(t, drain(ch), consumergroupLag); len(got) != 2 {
+		t.Errorf("lag by partition %v, want partitions 0 and 1 only", got)
+	}
+	if got := metadataRequestsFor(mock, "t") - before; got != 1 {
+		t.Errorf("got %d metadata refreshes of t for 2 unlisted partitions, want 1", got)
+	}
+}
+
+// The group has offsets for "gone", which Kafka's metadata does not list. The
+// leader check must not read the partitions of a topic it could not find (a
+// sarama cache miss refreshes): one refresh for the leader check and one for
+// the leader lookup that confirms the deletion.
+func TestGroupLagDoesNotReadPartitionsOfAnUnknownTopic(t *testing.T) {
+	initGroupMetricDescs()
+	mock := sarama.NewMockBroker(t, 0)
+	t.Cleanup(mock.Close)
+	config := sarama.NewConfig()
+	config.ApiVersionsRequest = false
+	config.Metadata.Retry.Max = 0
+	mock.SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest":    sarama.NewMockMetadataResponse(t).SetBroker(mock.Addr(), mock.BrokerID()),
+		"OffsetFetchRequest": sarama.NewMockOffsetFetchResponse(t).SetOffset("g", "gone", 0, 5, "", sarama.ErrNoError),
+	})
+	client, err := sarama.NewClient([]string{mock.Addr()}, config)
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+
+	e := &Exporter{client: client, offsetShowAll: false}
+	group := consumerGroupInfo{id: "g", memberCount: 1, currentAssignments: map[string]map[int32]struct{}{"gone": {0: {}}}}
+	ch := make(chan prometheus.Metric, 100)
+	e.emitGroupMetricsIn(newCollectMetadata(client), group, sarama.NewBroker(mock.Addr()), nil, ch)
+	drain(ch)
+
+	if got := metadataRequestsFor(mock, "gone"); got != 2 {
+		t.Errorf("got %d metadata requests for an unknown topic, want 2", got)
+	}
+}
+
+// Partition 1 of "t" is leaderless in the cache. The leader check's refresh for
+// it also brings in a new, leaderless partition 2. Partition 2 is now in the
+// cache, so it is skipped as leaderless, without a refresh for an unknown one.
+func TestLeaderCheckRefreshUpdatesTheKnownPartitions(t *testing.T) {
+	initGroupMetricDescs()
+	mock := sarama.NewMockBroker(t, 0)
+	t.Cleanup(mock.Close)
+	config := sarama.NewConfig()
+	config.ApiVersionsRequest = false
+	config.Metadata.Retry.Max = 0
+	version := sarama.NewMetadataRequest(config.Version, nil).Version
+	replicas := []int32{mock.BrokerID()}
+	metadata := func(partitions int32) *sarama.MetadataResponse {
+		m := &sarama.MetadataResponse{Version: version}
+		m.AddBroker(mock.Addr(), mock.BrokerID())
+		m.AddTopicPartition("t", 0, mock.BrokerID(), replicas, replicas, nil, sarama.ErrNoError)
+		for p := int32(1); p < partitions; p++ {
+			m.AddTopicPartition("t", p, -1, replicas, nil, replicas, sarama.ErrLeaderNotAvailable)
+		}
+		return m
+	}
+	mock.SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest": sarama.NewMockSequence(sarama.NewMockWrapper(metadata(2)), sarama.NewMockWrapper(metadata(3))),
+		"OffsetFetchRequest": sarama.NewMockOffsetFetchResponse(t).
+			SetOffset("g", "t", 0, 5, "", sarama.ErrNoError).
+			SetOffset("g", "t", 1, 5, "", sarama.ErrNoError).
+			SetOffset("g", "t", 2, 5, "", sarama.ErrNoError),
+		"OffsetRequest": sarama.NewMockOffsetResponse(t).SetOffset("t", 0, sarama.OffsetNewest, 10),
+	})
+	client, err := sarama.NewClient([]string{mock.Addr()}, config)
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	before := metadataRequestsFor(mock, "t")
+
+	e := &Exporter{client: client, offsetShowAll: false}
+	group := consumerGroupInfo{id: "g", memberCount: 1, currentAssignments: map[string]map[int32]struct{}{"t": {0: {}, 1: {}, 2: {}}}}
+	ch := make(chan prometheus.Metric, 100)
+	e.emitGroupMetricsIn(newCollectMetadata(client), group, sarama.NewBroker(mock.Addr()), nil, ch)
+
+	if got := gaugesByPartition(t, drain(ch), consumergroupLag); len(got) != 1 || got["0"] != 5 {
+		t.Errorf("lag by partition %v, want 5 for partition 0 only", got)
+	}
+	if got := metadataRequestsFor(mock, "t") - before; got != 1 {
+		t.Errorf("got %d metadata refreshes of t, want 1 (the leader check's)", got)
 	}
 }
