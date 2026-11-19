@@ -206,7 +206,7 @@ func (e *Exporter) retryFailed(meta *collectMetadata, batches []*offsetBatch, re
 		if e.topicGone(topic, sarama.ErrUnknownTopicOrPartition) {
 			continue
 		}
-		resolved, sameBroker := 0, 0
+		sameBroker := 0
 		for i := range batches {
 			for _, partition := range missing[i][topic] {
 				failed, ok := results[i].failedOn[topic][partition]
@@ -214,14 +214,14 @@ func (e *Exporter) retryFailed(meta *collectMetadata, batches []*offsetBatch, re
 					continue
 				}
 				if leader := leaderOf(topic, partition); leader != nil {
-					resolved++
 					if leader.ID() == failed {
 						sameBroker++
 					}
 				}
 			}
 		}
-		if resolved > 0 && sameBroker == resolved {
+		// one stale leader is enough: the refresh may predate that partition's move
+		if sameBroker > 0 {
 			recheck = append(recheck, topic)
 		}
 	}
@@ -260,20 +260,19 @@ func (e *Exporter) retryFailed(meta *collectMetadata, batches []*offsetBatch, re
 				known[partition] = true
 			}
 			// still asking the broker that failed: metadata disagrees with it
-			resolved, sameBroker := 0, 0
+			sameBroker := 0
 			for _, partition := range partitions {
 				if !known[partition] {
 					continue
 				}
 				if leader := leaderOf(topic, partition); leader != nil {
 					retries[i].add(leader, topic, partition)
-					resolved++
 					if failed, ok := results[i].failedOn[topic][partition]; ok && failed == leader.ID() {
 						sameBroker++
 					}
 				}
 			}
-			if resolved > 0 && sameBroker == resolved {
+			if sameBroker > 0 {
 				meta.markDisagrees(topic, observed[topic], lookedUp[topic])
 			}
 		}

@@ -2026,3 +2026,134 @@ func TestRetrySkipsATopicALeaderCheckDroppedFromTheCache(t *testing.T) {
 		t.Errorf("t not reported deleted: err %v, marked %v", results[0].errs["t"], meta.isDeleted("t"))
 	}
 }
+
+// t/0 and t/1 are led by b1. While a fetch from b1 is in flight, another
+// group's refresh finds t/0 moved to b2 but still names b1 for t/1; t/1 then
+// moves to b3, and b1 answers NOT_LEADER for both. That refresh is stale for
+// t/1, so the fetch must refresh again even though t/0's leader is fresh.
+func TestRecheckWhenSomeFailedPartitionsStillNameTheFailedBroker(t *testing.T) {
+	b1, b2, b3 := sarama.NewMockBroker(t, 1), sarama.NewMockBroker(t, 2), sarama.NewMockBroker(t, 3)
+	for _, b := range []*sarama.MockBroker{b1, b2, b3} {
+		t.Cleanup(b.Close)
+	}
+	config := sarama.NewConfig()
+	config.ApiVersionsRequest = false
+	// one request per refresh, so each metadata response is one refresh's
+	config.Metadata.Retry.Max = 0
+	config.Metadata.Retry.Backoff = 10 * time.Second
+	metadata := func(leader0, leader1 *sarama.MockBroker) *sarama.MockMetadataResponse {
+		m := sarama.NewMockMetadataResponse(t)
+		for _, b := range []*sarama.MockBroker{b1, b2, b3} {
+			m.SetBroker(b.Addr(), b.BrokerID())
+		}
+		return m.SetLeader("t", 0, leader0.BrokerID()).SetLeader("t", 1, leader1.BrokerID())
+	}
+	// client start, the other group's refresh, any later one
+	sequence := sarama.NewMockSequence(metadata(b1, b1), metadata(b2, b1), metadata(b2, b3))
+	stale := &sarama.OffsetResponse{Version: sarama.NewOffsetRequest(config.Version).Version}
+	stale.Blocks = map[string]map[int32]*sarama.OffsetResponseBlock{"t": {
+		0: {Err: sarama.ErrNotLeaderForPartition},
+		1: {Err: sarama.ErrNotLeaderForPartition},
+	}}
+	b1.SetHandlerByMap(map[string]sarama.MockResponse{"MetadataRequest": sequence, "OffsetRequest": sarama.NewMockWrapper(stale)})
+	b2.SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest": sequence,
+		"OffsetRequest":   sarama.NewMockOffsetResponse(t).SetOffset("t", 0, sarama.OffsetNewest, 42),
+	})
+	b3.SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest": sequence,
+		"OffsetRequest":   sarama.NewMockOffsetResponse(t).SetOffset("t", 1, sarama.OffsetNewest, 43),
+	})
+	client, err := sarama.NewClient([]string{b1.Addr()}, config)
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	e := &Exporter{client: client}
+	meta := newCollectMetadata(client)
+	meta.now = func() time.Time { return time.Unix(1_000_000, 0) }
+	batch := newOffsetBatch(config.Version, sarama.OffsetNewest)
+	for p := int32(0); p < 2; p++ {
+		leader, err := client.Leader("t", p)
+		if err != nil {
+			t.Fatalf("leader of t/%d: %v", p, err)
+		}
+		batch.add(leader, "t", p)
+	}
+	batches := []*offsetBatch{batch}
+
+	began := meta.generations(batches)
+	meta.refresh([]string{"t"}, meta.generationsOf([]string{"t"}))
+	results := e.retryFailed(meta, batches, fetchAll(batches), began)
+
+	if got := results[0].offsets["t"]; got[0] != 42 || got[1] != 43 {
+		t.Errorf("got offsets %v, want 42 for t/0 from b2 and 43 for t/1 from b3", got)
+	}
+}
+
+// Metadata keeps naming b1 for t/1 while b1 answers NOT_LEADER for it, but
+// t/0 has moved to b2. A refresh that still names the failed broker for any
+// partition starts the backoff, so later fetches don't each refresh again.
+func TestPartlyDisagreeingMetadataStartsTheBackoff(t *testing.T) {
+	b1, b2 := sarama.NewMockBroker(t, 1), sarama.NewMockBroker(t, 2)
+	t.Cleanup(b1.Close)
+	t.Cleanup(b2.Close)
+	config := sarama.NewConfig()
+	config.ApiVersionsRequest = false
+	config.Metadata.Retry.Max = 0
+	config.Metadata.Retry.Backoff = 10 * time.Second
+	metadata := func(leader0 *sarama.MockBroker) *sarama.MockMetadataResponse {
+		return sarama.NewMockMetadataResponse(t).
+			SetBroker(b1.Addr(), b1.BrokerID()).
+			SetBroker(b2.Addr(), b2.BrokerID()).
+			SetLeader("t", 0, leader0.BrokerID()).
+			SetLeader("t", 1, b1.BrokerID())
+	}
+	sequence := sarama.NewMockSequence(metadata(b1), metadata(b2))
+	stale := &sarama.OffsetResponse{Version: sarama.NewOffsetRequest(config.Version).Version}
+	stale.Blocks = map[string]map[int32]*sarama.OffsetResponseBlock{"t": {
+		0: {Err: sarama.ErrNotLeaderForPartition},
+		1: {Err: sarama.ErrNotLeaderForPartition},
+	}}
+	b1.SetHandlerByMap(map[string]sarama.MockResponse{"MetadataRequest": sequence, "OffsetRequest": sarama.NewMockWrapper(stale)})
+	b2.SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest": sequence,
+		"OffsetRequest":   sarama.NewMockOffsetResponse(t).SetOffset("t", 0, sarama.OffsetNewest, 42),
+	})
+	client, err := sarama.NewClient([]string{b1.Addr()}, config)
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	e := &Exporter{client: client}
+	meta := newCollectMetadata(client)
+	clock := time.Unix(1_000_000, 0)
+	meta.now = func() time.Time { return clock }
+	fetchT1 := func() {
+		leader, err := client.Leader("t", 1)
+		if err != nil {
+			t.Fatalf("leader of t/1: %v", err)
+		}
+		batch := newOffsetBatch(config.Version, sarama.OffsetNewest)
+		batch.add(leader, "t", 1)
+		e.fetchOffsets(meta, batch)
+	}
+	leader, err := client.Leader("t", 0)
+	if err != nil {
+		t.Fatalf("leader of t/0: %v", err)
+	}
+	first := newOffsetBatch(config.Version, sarama.OffsetNewest)
+	first.add(leader, "t", 0)
+	first.add(leader, "t", 1)
+	// refreshes: t/0 now b2, t/1 still b1, which keeps failing
+	if got := e.fetchOffsets(meta, first)[0].offsets["t"][0]; got != 42 {
+		t.Fatalf("first fetch got %d for t/0, want 42 from b2", got)
+	}
+	clock = clock.Add(config.Metadata.Retry.Backoff / 5)
+	before := metadataRequestsFor(b1, "t") + metadataRequestsFor(b2, "t")
+	fetchT1()
+	fetchT1()
+	if got := metadataRequestsFor(b1, "t") + metadataRequestsFor(b2, "t") - before; got != 0 {
+		t.Errorf("got %d more refreshes within the backoff, want 0: partly disagreeing metadata started no backoff", got)
+	}
+}
