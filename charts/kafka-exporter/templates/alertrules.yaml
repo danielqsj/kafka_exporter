@@ -1,0 +1,49 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "kafka-exporter.fullname" . }}
+  {{- if .Values.prometheus.serviceMonitor.namespace }}
+  namespace: {{ .Values.prometheus.serviceMonitor.namespace }}
+  {{- end }}
+  labels:
+    app.kubernetes.io/name: {{ include "kafka-exporter.name" . }}
+    helm.sh/chart: {{ include "kafka-exporter.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    {{- if .Values.prometheus.serviceMonitor.additionalLabels }}
+{{ toYaml .Values.prometheus.serviceMonitor.additionalLabels | indent 4 -}}
+    {{- end }}
+spec:
+  groups:
+  - name: alertrules.kafkaExporter
+    rules:
+    - record: isr_partition_difference
+      expr: kafka_topic_partition_in_sync_replica{topic!="__consumer_offsets",topic!="__samza_*"} - kafka_topic_partition_replicas{topic!="__consumer_offsets",topic!="__samza_*"}
+
+    - alert: ISR_not_equal_to_partition
+      annotations:
+        message: {{`"ISR and replication difference for $labels.topic is > 0 current value: {{ humanize $value }}"`}}
+        summary: {{`"ISR and Replica Mismatch for {{$labels.topic}}"`}}
+      expr: isr_partition_difference != 0
+      for: 5m
+      labels:
+        severity: critical
+
+    - alert: Kafka_partition_leader_change_rapidly
+      annotations:
+        message:  {{`"Kafaka Partition leader changing rapidly for {{ $labels.topic }}"`}}
+        summary: {{`"Kafaka Partition leader changing rapidly for {{ $labels.topic }}"`}}
+      expr: rate(kafka_topic_partition_leader{topic!="__consumer_offsets",topic!="__samza_*"}[5m]) > 0
+      for: 5m
+      labels:
+        severity: critical
+
+    - alert: kafka_broker_unavailable
+      annotations:
+        summary: {{`"Kafka brokers unavailable"`}}
+        message: "There are only {{`{{humanize $value}}`}} kafka brokers available; Expected count: {{len .Values.kafkaExporter.kafka.servers}}"
+      expr: kafka_brokers < {{ len .Values.kafkaExporter.kafka.servers }}
+      for: 5m
+      labels:
+        severity: critical
